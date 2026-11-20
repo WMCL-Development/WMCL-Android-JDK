@@ -200,6 +200,16 @@ static size_t tiny_c32rtomb(char* s, char32_t c32, mbstate_t* ps) {
     open(p, 'w').write(s)
 PY
 
+# clang -O3 inlines and discards ArrayAllocator<bm_word_t, mtInternal>::free()
+# from bitMap.o, but other translation units reference it out of line. Force an
+# out-of-line definition so libjvm resolves it without a lazy C++ symbol.
+cat >> hotspot/src/share/vm/utilities/bitMap.cpp <<'EOF'
+
+// Android/clang: emit an out-of-line definition for TUs that only see the
+// declaration of ArrayAllocator::free().
+template void ArrayAllocator<bm_word_t, mtInternal>::free();
+EOF
+
 echo "==> Preparing toolchain headers"
 ln -sfn /usr/include/X11 "$TOOLCHAIN/sysroot/usr/include/X11"
 ln -sfn /usr/include/alsa "$TOOLCHAIN/sysroot/usr/include/alsa"
