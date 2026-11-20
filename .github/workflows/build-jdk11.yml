@@ -2,6 +2,7 @@ name: Build JDK 11 aarch64
 
 on:
   push:
+    branches: [ jdk11 ]
   workflow_dispatch:
 
 jobs:
