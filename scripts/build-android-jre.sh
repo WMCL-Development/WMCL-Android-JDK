@@ -194,7 +194,8 @@ BUILD_DIR="$(find build -maxdepth 1 -type d -name "linux-$TARGET_JDK-*" | head -
 test -d "$BUILD_DIR"
 # Keep the target compiler flags out of the host tool builds.
 unset CFLAGS CXXFLAGS LDFLAGS
-make -C "$BUILD_DIR" JOBS="$(nproc)" images
+# Hotspot enables PCH by default unless USE_PRECOMPILED_HEADER=0 is passed to make.
+make -C "$BUILD_DIR" JOBS="$(nproc)" USE_PRECOMPILED_HEADER=0 images
 
 echo "==> Creating JRE image"
 JDK_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 2 -type d -name jdk | head -n 1)"
