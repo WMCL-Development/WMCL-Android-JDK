@@ -234,8 +234,26 @@ fi
 # Amethyst ships them as jre_override/lib.  Carry the same files so
 # java.desktop can initialise FontConfiguration (needed by Minecraft's
 # Cacio agent during premain).
-if [ -d "$SRC_DIR/jre_override/lib" ] && [ -d "$LIB_ROOT" ]; then
-  cp -a "$SRC_DIR/jre_override/lib/." "$LIB_ROOT/"
+# The Amethyst build repo ships jre_override/lib (fontconfig + Lucida fonts).
+# This branch applies its patches from the repo tree, so fall back to fetching
+# the same pinned Amethyst archive.
+FONT_OVERRIDE_DIR=""
+if [ -d "$SRC_DIR/jre_override/lib" ]; then
+  FONT_OVERRIDE_DIR="$SRC_DIR/jre_override/lib"
+fi
+if [ -z "$FONT_OVERRIDE_DIR" ]; then
+  AMETHYST_OVERRIDE="$WORK/amethyst-jre-override"
+  if [ ! -d "$AMETHYST_OVERRIDE/jre_override/lib" ]; then
+    rm -rf "$AMETHYST_OVERRIDE"; mkdir -p "$AMETHYST_OVERRIDE"
+    curl -fL --retry 3 -o "$WORK/amethyst-override.tar.gz" "https://github.com/AngelAuraMC/angelauramc-openjdk-build/archive/196da32d80fe96d6967ca1c154f102cff0dfc389.tar.gz" >/dev/null 2>&1 || true
+    tar xf "$WORK/amethyst-override.tar.gz" -C "$AMETHYST_OVERRIDE" --strip-components=1 >/dev/null 2>&1 || true
+  fi
+  if [ -d "$AMETHYST_OVERRIDE/jre_override/lib" ]; then
+    FONT_OVERRIDE_DIR="$AMETHYST_OVERRIDE/jre_override/lib"
+  fi
+fi
+if [ -n "$FONT_OVERRIDE_DIR" ] && [ -d "$LIB_ROOT" ]; then
+  cp -a "$FONT_OVERRIDE_DIR/." "$LIB_ROOT/"
 fi
 
 # Strip native libraries with the NDK toolchain (same as FCL/Amethyst) and run
