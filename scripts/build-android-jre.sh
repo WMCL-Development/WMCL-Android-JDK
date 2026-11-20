@@ -170,6 +170,31 @@ s = s.replace(old, new)
 open(p, 'w').write(s)
 PY
 grep -q 'if (_first == NULL)' hotspot/src/share/vm/memory/allocation.cpp || { echo 'Arena destruct_contents guard did not apply'; exit 1; }
+# JDK 8 has the same 48-bit inline-cache value cell; restore the Android heap
+# pointer tag when a cached CompiledICHolder* is read or released.
+python3 - <<'PY'
+p = 'hotspot/src/share/vm/code/compiledIC.cpp'
+s = open(p).read()
+if 'restore_compiled_ic_pointer_tag' not in s:
+    s = s.replace('#include "memory/metadataFactory.hpp"',
+                  '#include "memory/allocation.hpp"\n#include "memory/metadataFactory.hpp"', 1)
+    s = s.replace('#include "runtime/icache.hpp"',
+                  '#include "runtime/icache.hpp"\n#include "runtime/os.hpp"', 1)
+    helper = "\n// On Android the bionic allocator tags C-heap pointers in the top byte (scudo\n// heap tagging; with MTE disabled the tag is a process-wide constant, e.g.\n// 0xb4).  The inline-cache value cell for a virtual call is materialised with\n// movz+movk+movk, i.e. it can only hold 48 bits (see MacroAssembler::movptr()),\n// so a CompiledICHolder* read back from it has lost its tag.  bionic's free()\n// aborts when it sees a pointer whose tag was truncated, so restore the process\n// tag before such a holder is dereferenced or released.\n//\n// Scope: only the CompiledICHolder path is retagged.  Metadata values live\n// below the 48-bit boundary and must not be retagged, so callers must only use\n// this helper for value cells that are known to hold a CompiledICHolder*.\n// Rollback: if this ever misbehaves on a platform where heap pointers are not\n// tagged, android_heap_pointer_tag() returns 0 and the helper is a no-op.\nstatic uintptr_t android_heap_pointer_tag() {\n  static uintptr_t tag = (uintptr_t)-1;\n  if (tag == (uintptr_t)-1) {\n    // Probe once with a known C-heap allocation; 0 means tagging is disabled.\n    void* probe = os::malloc(8, mtInternal);\n    tag = (probe == NULL) ? 0 : ((uintptr_t)probe & 0xff00000000000000ULL);\n    if (probe != NULL) {\n      os::free(probe);\n    }\n  }\n  return tag;\n}\n\nstatic void* restore_compiled_ic_pointer_tag(void* value) {\n  uintptr_t v = (uintptr_t)value;\n  if (v != 0 && (v >> 48) == 0) {\n    v |= android_heap_pointer_tag();\n  }\n  return (void*)v;\n}\n"
+    anchor = '// Every time a compiled IC is changed or its type is being accessed,'
+    assert s.count(anchor) == 1
+    s = s.replace(anchor, helper + '\n' + anchor, 1)
+    old = '    void* data = (void*)_value->data();'
+    new = '    void* data = (void*)_value->data();\n    if (is_icholder_call()) {\n      data = restore_compiled_ic_pointer_tag(data);\n    }'
+    assert s.count(old) == 1, s.count(old)
+    s = s.replace(old, new)
+    old2 = '    InlineCacheBuffer::queue_for_release((CompiledICHolder*)_value->data());'
+    new2 = '    InlineCacheBuffer::queue_for_release(\n        (CompiledICHolder*)restore_compiled_ic_pointer_tag((void*)_value->data()));'
+    assert s.count(old2) == 1
+    s = s.replace(old2, new2)
+    open(p, 'w').write(s)
+PY
+grep -q 'restore_compiled_ic_pointer_tag' hotspot/src/share/vm/code/compiledIC.cpp || { echo 'jdk8 compiledIC tag fix did not apply'; exit 1; }
 # Hotspot defaults to clang PCH, which passes gcc-only -fpch-deps to clang.
 sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
 # USE_CLANG is empty with our gcc-disguised clang, so drop the GCC-only dep flag.
