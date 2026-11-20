@@ -283,6 +283,12 @@ fi
 echo "==> Building OpenJDK images"
 BUILD_DIR="$(find build -maxdepth 1 -type d -name "linux-$TARGET_JDK-*" | head -n 1)"
 test -d "$BUILD_DIR"
+# The serviceability agent is disabled, but the image rules still expect its
+# jar; an empty placeholder keeps the JDK image step happy (it is not part of
+# the JRE image).
+mkdir -p "$BUILD_DIR/jdk/lib"
+: > "$BUILD_DIR/jdk/lib/sa-jdi.jar"
+
 # Keep the target compiler flags out of the host tool builds.
 unset CFLAGS CXXFLAGS LDFLAGS
 # Hotspot enables PCH by default unless USE_PRECOMPILED_HEADER=0 is passed to make.
