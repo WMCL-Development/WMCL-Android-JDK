@@ -277,7 +277,10 @@ done
 
 # The NDK clang driver adds its own sysroot; do not leak the target include
 # path into the environment because it also affects host build tools.
-export CFLAGS="-DLE_STANDALONE -O3 -D__ANDROID__"
+# clang -O3 miscompiles hotspot (e.g. ObjectSynchronizer::inflate drops the
+# mark-word bit tests and dereferences a neutral mark word as a pointer). The
+# extra flags are appended after hotspot's own OPT_CFLAGS, so -O2 here wins.
+export CFLAGS="-DLE_STANDALONE -O2 -D__ANDROID__"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="-L$WORK/dummy_libs -Wl,--undefined-version"
 # JDK 8 configure insists on a gcc toolchain, so route the Android clang
