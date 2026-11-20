@@ -119,7 +119,7 @@ ln -sfn "$WORK/cups-$CUPS_VERSION/cups" "$TOOLCHAIN/sysroot/usr/include/cups"
 cat > "$WORK/android-wrapped-clang" <<EOF
 #!/usr/bin/env bash
 if [ "\$1" = "--version" ]; then
-  echo "$TARGET-gcc (GCC) 4.9 20140827 (prerelease)"
+  echo "$TARGET-gcc (GCC) 5.4.0 20160609 (prerelease)"
   echo "Copyright (C) 2014 Free Software Foundation, Inc."
   echo "This is free software; see the source for copying conditions.  There is NO"
   echo "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
@@ -130,7 +130,7 @@ EOF
 cat > "$WORK/android-wrapped-clang++" <<EOF
 #!/usr/bin/env bash
 if [ "\$1" = "--version" ]; then
-  echo "$TARGET-g++ (GCC) 4.9 20140827 (prerelease)"
+  echo "$TARGET-g++ (GCC) 5.4.0 20160609 (prerelease)"
   echo "Copyright (C) 2014 Free Software Foundation, Inc."
   echo "This is free software; see the source for copying conditions.  There is NO"
   echo "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
