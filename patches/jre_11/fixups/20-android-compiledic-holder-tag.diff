@@ -1,0 +1,47 @@
+--- a/src/hotspot/share/code/compiledIC.cpp
++++ b/src/hotspot/share/code/compiledIC.cpp
+@@ -41,9 +41,24 @@
+ #include "runtime/icache.hpp"
+ #include "runtime/sharedRuntime.hpp"
+ #include "runtime/stubRoutines.hpp"
++#include "runtime/thread.hpp"
+ #include "utilities/events.hpp"
+ 
+ 
++
++// Android's bionic allocator tags C-heap pointers in the top byte.  The
++// inline-cache value cell is materialised with movz+movk+movk, i.e. it can only
++// hold 48 bits, so a CompiledICHolder* read back from it has lost its tag.
++// Restore the process tag before the holder is dereferenced or released;
++// bionic's free() aborts for pointers whose tag was truncated.
++static void* restore_compiled_ic_pointer_tag(void* value) {
++  uintptr_t v = (uintptr_t)value;
++  if (v != 0 && (v >> 48) == 0) {
++    v |= (uintptr_t)Thread::current() & 0xff00000000000000ULL;
++  }
++  return (void*)v;
++}
++
+ // Every time a compiled IC is changed or its type is being accessed,
+ // either the CompiledIC_lock must be set or we must be at a safe point.
+ 
+@@ -57,6 +72,9 @@
+ 
+   if (!is_in_transition_state()) {
+     void* data = get_data();
++    if (is_icholder_call()) {
++      data = restore_compiled_ic_pointer_tag(data);
++    }
+     // If we let the metadata value here be initialized to zero...
+     assert(data != NULL || Universe::non_oop_word() == NULL,
+            "no raw nulls in CompiledIC metadatas, because of patching races");
+@@ -84,7 +102,8 @@
+     // the next safepoint.  Make sure that the CompiledICHolder* is
+     // marked for release at this point since it won't be identifiable
+     // once the entry point is overwritten.
+-    InlineCacheBuffer::queue_for_release((CompiledICHolder*)get_data());
++    InlineCacheBuffer::queue_for_release(
++        (CompiledICHolder*)restore_compiled_ic_pointer_tag(get_data()));
+   }
+ 
+   if (TraceCompiledIC) {
