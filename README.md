@@ -41,11 +41,21 @@
 
 ## Parity
 
-与 Amethyst arm64 包逐文件对比：
+与 Amethyst arm64 包逐文件对比，报告见各分支 `tests/parity-jdk<N>.txt`：
 
-- jdk8/17/21：我们是完整 JDK，相对 Amethyst 的 JRE 是超集
-- jdk25：Amethyst 有 `libsleef.so` 和 `libawt_xawt.so` stub，需要单独核对
-- 允许差异仅限 JDK 版本、legal 文档、版本特有工具；任何会被 Android 加载的 `lib/*.so` 或运行资源缺失都算失败
+| 版本 | 运行时缺失 | 说明 |
+|---|---|---|
+| jdk8 | 0 | 27 个 `man/*` 为运行时包主动删除；其余为 JDK-only 工具/文档 |
+| jdk11 | 0 | `conf/sdp`（JDK14+ 才有）、`libjli` 的 `lib/jli/` 布局、legal 文档，均为版本/布局差异 |
+| jdk17 | 0 | 无 |
+| jdk21 | 0 | 无 |
+| jdk25 | 0 | 仅 2 个允许项：`lib/libawt_xawt.so`（Amethyst 的 6.8KB X11 stub，Android 不加载）+ `legal/java.base/gcc.md` |
+
+补充：
+
+- jdk11/17/21 的 `lib/libsleef.so` 与 Amethyst 同版本一样不存在，不是缺失；jdk25 的两边都有。
+- 允许差异仅限 JDK 版本、legal 文档、版本特有工具；任何 Android 会加载的 `lib/*.so` 或运行资源缺失都算失败。
+- 目前所有版本 blocker = 0。
 
 ## 许可证
 
