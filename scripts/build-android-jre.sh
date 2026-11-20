@@ -92,11 +92,18 @@ echo "==> Applying Android patches"
 for NAME in jdk25u_android.diff; do
   patch="$SRC_DIR/patches/$NAME"
   if git apply --reject --whitespace=fix "$patch"; then continue; fi
-  bad="$(find . -name '*.rej' | grep -v 'make/autoconf/build-aux/config.sub.rej' || true)"
+  # Only these two hunks are known to drift against 25.0.5.1; both are handled
+  # below. Anything else is fatal.
+  bad="$(find . -name '*.rej' -print | grep -vE '(^\./make/autoconf/libraries\.m4\.rej$)|(^\./src/hotspot/os/linux/os_linux\.cpp\.rej$)|(^\./make/autoconf/build-aux/config\.sub\.rej$)' || true)"
   if [ -n "$bad" ]; then echo "Unresolved rejects from $NAME:"; echo "$bad"; exit 1; fi
+  # libraries.m4: the X11 hunk is obsolete because the build is headless-only.
+  # os_linux.cpp: provide the aarch64 SYS_gettid fallback from the patch.
+  if ! grep -q 'define SYS_gettid 178' src/hotspot/os/linux/os_linux.cpp; then
+    perl -0pi -e 's/\n  #else\n    #error "Define SYS_gettid for this architecture"/\n  #elif defined(__aarch64__)\n    #define SYS_gettid 178\n  #else\n    #error "Define SYS_gettid for this architecture"/' src/hotspot/os/linux/os_linux.cpp
+  fi
   find . -name '*.rej' -delete
   find . -name '*.orig' -delete
-  echo "note: skipped obsolete config.sub hunk from $NAME"
+  echo "note: re-applied drifted hunks from $NAME"
 done
 
 echo "==> Preparing toolchain headers"
@@ -147,6 +154,7 @@ export STRIP="$TOOLCHAIN/bin/llvm-strip"
 echo "==> Configuring OpenJDK $JDK_VERSION for $TARGET"
 if ! bash ./configure \
   --openjdk-target="$TARGET" \
+  --with-build-jdk="$JAVA_HOME" \
   --with-toolchain-type=clang \
   --with-sysroot="$TOOLCHAIN/sysroot" \
   --with-extra-cflags="$CFLAGS" \
@@ -159,7 +167,7 @@ if ! bash ./configure \
   --with-jvm-variants="$JVM_VARIANTS" \
   --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc \
   --with-cups-include="$WORK/cups-$CUPS_VERSION" \
-  --with-native-debug-symbols=external \
+  --with-native-debug-symbols=none \
   --with-debug-level="$JDK_DEBUG_LEVEL" \
   --with-fontconfig-include="$TOOLCHAIN/sysroot/usr/include" \
   --with-alsa-include="$TOOLCHAIN/sysroot/usr/include" \
