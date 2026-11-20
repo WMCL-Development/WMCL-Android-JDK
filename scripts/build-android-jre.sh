@@ -209,6 +209,14 @@ if [ -d "$JDK_IMAGE/lib" ]; then
   fi
 fi
 
+# Android headless builds omit the closed fontconfig database and Lucida fonts;
+# Amethyst ships them as jre_override/lib.  Carry the same files so
+# java.desktop can initialise FontConfiguration (needed by Minecraft's
+# Cacio agent during premain).
+if [ -d "$SRC_DIR/jre_override/lib" ]; then
+  cp -a "$SRC_DIR/jre_override/lib/." "$JDK_IMAGE/lib/"
+fi
+
 echo "==> Packing JDK image"
 tar cJf "$OUT/jdk$JDK_MAJOR-android-$TARGET_SHORT.tar.xz" -C "$JDK_IMAGE" .
 ls -lh "$OUT"
