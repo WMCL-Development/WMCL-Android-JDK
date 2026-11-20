@@ -1,31 +1,63 @@
 --- a/src/hotspot/share/code/compiledIC.cpp
 +++ b/src/hotspot/share/code/compiledIC.cpp
-@@ -41,9 +41,24 @@
+@@ -31,6 +31,7 @@
+ #include "code/vtableStubs.hpp"
+ #include "interpreter/interpreter.hpp"
+ #include "interpreter/linkResolver.hpp"
++#include "memory/allocation.hpp"
+ #include "memory/metadataFactory.hpp"
+ #include "memory/oopFactory.hpp"
+ #include "memory/resourceArea.hpp"
+@@ -40,11 +41,47 @@
+ #include "runtime/handles.inline.hpp"
  #include "runtime/icache.hpp"
  #include "runtime/sharedRuntime.hpp"
++#include "runtime/os.hpp"
  #include "runtime/stubRoutines.hpp"
-+#include "runtime/thread.hpp"
  #include "utilities/events.hpp"
  
  
+-// Every time a compiled IC is changed or its type is being accessed,
 +
-+// Android's bionic allocator tags C-heap pointers in the top byte.  The
-+// inline-cache value cell is materialised with movz+movk+movk, i.e. it can only
-+// hold 48 bits, so a CompiledICHolder* read back from it has lost its tag.
-+// Restore the process tag before the holder is dereferenced or released;
-+// bionic's free() aborts for pointers whose tag was truncated.
++// On Android the bionic allocator tags C-heap pointers in the top byte (scudo
++// heap tagging; with MTE disabled the tag is a process-wide constant, e.g.
++// 0xb4).  The inline-cache value cell for a virtual call is materialised with
++// movz+movk+movk, i.e. it can only hold 48 bits (see MacroAssembler::movptr()
++// and MacroAssembler::ic_call()), so a CompiledICHolder* read back from it has
++// lost its tag.  bionic's free() aborts when it sees a pointer whose tag was
++// truncated, so restore the process tag before such a holder is dereferenced
++// or released.
++//
++// Scope: only the CompiledICHolder path is retagged.  Metadata values live
++// below the 48-bit boundary and must not be retagged, so callers must only use
++// this helper for value cells that are known to hold a CompiledICHolder*.
++// Rollback: if this ever misbehaves on a platform where heap pointers are not
++// tagged, android_heap_pointer_tag() returns 0 and the helper is a no-op.
++static uintptr_t android_heap_pointer_tag() {
++  static uintptr_t tag = (uintptr_t)-1;
++  if (tag == (uintptr_t)-1) {
++    // Probe once with a known C-heap allocation; 0 means tagging is disabled.
++    void* probe = os::malloc(8, mtInternal);
++    tag = (probe == NULL) ? 0 : ((uintptr_t)probe & 0xff00000000000000ULL);
++    if (probe != NULL) {
++      os::free(probe);
++    }
++  }
++  return tag;
++}
++
 +static void* restore_compiled_ic_pointer_tag(void* value) {
 +  uintptr_t v = (uintptr_t)value;
 +  if (v != 0 && (v >> 48) == 0) {
-+    v |= (uintptr_t)Thread::current() & 0xff00000000000000ULL;
++    v |= android_heap_pointer_tag();
 +  }
 +  return (void*)v;
 +}
-+
- // Every time a compiled IC is changed or its type is being accessed,
++\n// Every time a compiled IC is changed or its type is being accessed,
  // either the CompiledIC_lock must be set or we must be at a safe point.
  
-@@ -57,6 +72,9 @@
+ //-----------------------------------------------------------------------------
+@@ -57,6 +94,9 @@
  
    if (!is_in_transition_state()) {
      void* data = get_data();
@@ -35,7 +67,7 @@
      // If we let the metadata value here be initialized to zero...
      assert(data != NULL || Universe::non_oop_word() == NULL,
             "no raw nulls in CompiledIC metadatas, because of patching races");
-@@ -84,7 +102,8 @@
+@@ -84,7 +124,8 @@
      // the next safepoint.  Make sure that the CompiledICHolder* is
      // marked for release at this point since it won't be identifiable
      // once the entry point is overwritten.
