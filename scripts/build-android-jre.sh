@@ -298,6 +298,12 @@ echo "==> Creating JRE image"
 if [ "$JDK_MAJOR" = "8" ]; then
   JRE_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 1 -type d -name 'j2re-image' | head -n 1)"
   test -d "$JRE_IMAGE"
+  # NDK clang++ links libjvm against the shared C++ runtime, so bundle it with
+  # the JRE next to the other native libraries.
+  LIBCXX_SHARED="$(find "$TOOLCHAIN/sysroot/usr/lib/$TARGET" -maxdepth 1 -name 'libc++_shared.so' 2>/dev/null | head -n 1)"
+  if [ -n "$LIBCXX_SHARED" ]; then
+    cp -f "$LIBCXX_SHARED" "$JRE_IMAGE/lib/$TARGET_JDK/"
+  fi
 else
   JDK_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 2 -type d -name jdk | head -n 1)"
   test -d "$JDK_IMAGE"
