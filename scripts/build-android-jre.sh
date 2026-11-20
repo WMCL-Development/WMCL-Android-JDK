@@ -238,6 +238,19 @@ else
     grep '^JAVA_VERSION=' "$JDK_IMAGE/release" >> "$JRE_IMAGE/release"
   fi
 fi
+
+# jlink does not copy JDK image extras such as the fontconfig database and
+# bundled Lucida fonts.  java.desktop needs them at runtime (Minecraft's
+# Cacio agent initialises FontConfiguration during premain), so carry them
+# over from the JDK image.
+if [ -d "$JDK_IMAGE/lib" ]; then
+  cp -a "$JDK_IMAGE/lib"/fontconfig* "$JRE_IMAGE/lib/" 2>/dev/null || true
+  cp -a "$JDK_IMAGE/lib"/psfont*.properties "$JRE_IMAGE/lib/" 2>/dev/null || true
+  if [ -d "$JDK_IMAGE/lib/fonts" ]; then
+    cp -a "$JDK_IMAGE/lib/fonts" "$JRE_IMAGE/lib/"
+  fi
+fi
+
 if [ -f "$FREETYPE_DIR/lib/libfreetype.so" ]; then
   cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$JRE_IMAGE/lib/"
 fi
