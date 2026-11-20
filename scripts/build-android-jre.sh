@@ -109,10 +109,19 @@ for NAME in jdk8u_android.diff jdk8u_android_main.diff; do
   echo "note: re-applied drifted autoconf hunks from $NAME"
 done
 
-# clang 18 at -O3 miscompiles the runtime-built logical-immediate lookup tables
-# in immediate_aarch64.cpp, which makes every andr with an immediate fail and
-# aborts the VM in StubRoutines::initialize1. Build hotspot at -O2 instead.
-sed -i 's/^OPT_CFLAGS\/SPEED=-O3$/OPT_CFLAGS\/SPEED=-O2/' hotspot/make/linux/makefiles/gcc.make
+# clang -O3 exploits a shift-by-64 undefined behaviour in the runtime-built
+# logical-immediate lookup tables: every andr with an immediate then fails and
+# the VM aborts in StubRoutines::initialize1. Guard the shift in replicate().
+python3 - <<'PY'
+p = 'hotspot/src/cpu/aarch64/vm/immediate_aarch64.cpp'
+s = open(p).read()
+if 'if (nbits < 64)' not in s:
+    old = '    result <<= nbits;\n'
+    new = '    // A shift by the width of the type is undefined C++; clang -O3\n    // folds the whole lookup table to garbage because of it.\n    if (nbits < 64) {\n      result <<= nbits;\n    }\n'
+    assert s.count(old) == 1, s.count(old)
+    s = s.replace(old, new)
+    open(p, 'w').write(s)
+PY
 # Hotspot defaults to clang PCH, which passes gcc-only -fpch-deps to clang.
 sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
 # USE_CLANG is empty with our gcc-disguised clang, so drop the GCC-only dep flag.
