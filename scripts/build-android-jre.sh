@@ -207,7 +207,7 @@ cat >> hotspot/src/share/vm/utilities/bitMap.cpp <<'EOF'
 
 // Android/clang: emit an out-of-line definition for TUs that only see the
 // declaration of ArrayAllocator::free().
-template void ArrayAllocator<bm_word_t, mtInternal>::free();
+template void ArrayAllocator<BitMap::bm_word_t, mtInternal>::free();
 EOF
 
 echo "==> Preparing toolchain headers"
