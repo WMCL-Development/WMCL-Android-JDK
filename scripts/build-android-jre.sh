@@ -139,6 +139,7 @@ export STRIP="$TOOLCHAIN/bin/llvm-strip"
 echo "==> Configuring OpenJDK $JDK_VERSION for $TARGET"
 if ! bash ./configure \
   --openjdk-target="$TARGET" \
+  --with-build-jdk="$JAVA_HOME" \
   --with-toolchain-type=clang \
   --with-sysroot="$TOOLCHAIN/sysroot" \
   --with-extra-cflags="$CFLAGS" \
@@ -151,7 +152,7 @@ if ! bash ./configure \
   --with-jvm-variants="$JVM_VARIANTS" \
   --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc \
   --with-cups-include="$WORK/cups-$CUPS_VERSION" \
-  --with-native-debug-symbols=external \
+  --with-native-debug-symbols=none \
   --with-debug-level="$JDK_DEBUG_LEVEL" \
   --with-fontconfig-include="$TOOLCHAIN/sysroot/usr/include" \
   --with-alsa-include="$TOOLCHAIN/sysroot/usr/include" \
