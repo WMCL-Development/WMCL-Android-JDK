@@ -1,6 +1,6 @@
 # wmcl-android-jdk
 
-为 WMCL 构建 Android arm64 的完整 OpenJDK JDK。
+为 WMCL 构建 Android arm64 的运行时 OpenJDK JDK（含 javac/ct.sym，不含 jmods/src.zip/demo/include/man；jlink 不可用）。
 
 ## 分支与版本
 
@@ -12,7 +12,7 @@
 | `openjdk-jdk21` | 21.0.13.1 | `jdk21-android-arm64.tar.xz` |
 | `openjdk-jdk25` | 25.0.5.1 | `jdk25-android-arm64.tar.xz` |
 
-产物是完整 JDK：包含 `bin/javac`、`jmods/`、`lib/ct.sym`、`lib/fontconfig*`、`lib/fonts/`，不是精简 JRE。
+产物是运行时 JDK：包含 `bin/javac`、`lib/ct.sym`、`lib/modules`、`lib/fontconfig*`、`lib/fonts/`、`lib/security`、`conf/`、`legal/`，保留 javac 编译能力；不包含 `jmods/`、`src.zip`、`demo/`、`include/`、`man/`（因此 `jlink` 不可用，这是预期取舍，用于压缩包体）。
 
 ## 构建
 

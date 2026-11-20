@@ -228,6 +228,15 @@ fi
 # Strip native libraries with the NDK toolchain (same as FCL/Amethyst) and run
 # termux-elf-cleaner so Android's linker accepts the ELF metadata.  --strip-unneeded
 # keeps the dynamic symbol table, so libjvm's exported JNI/JVM symbols stay intact.
+# Runtime JDK package: keep the launcher-facing JDK (java/javac, ct.sym, modules,
+# fonts, security, legal) but drop build-time only content.  jlink is therefore
+# unavailable in this package by design.
+rm -rf "$JDK_IMAGE/jmods" "$JDK_IMAGE/include" "$JDK_IMAGE/man" "$JDK_IMAGE/demo" "$JDK_IMAGE/sample"
+rm -f "$JDK_IMAGE/src.zip" "$JDK_IMAGE/lib/src.zip"
+if [ "$JDK_MAJOR" = "8" ]; then
+  rm -rf "$JDK_IMAGE/jre/man" "$JDK_IMAGE/jre/demo" "$JDK_IMAGE/jre/sample"
+fi
+
 BEFORE_KB=$(du -sk "$JDK_IMAGE" | cut -f1)
 if [ -x "$TOOLCHAIN/bin/llvm-strip" ]; then
   find "$JDK_IMAGE" -type f -name '*.so' -exec "$TOOLCHAIN/bin/llvm-strip" --strip-unneeded {} + 2>/dev/null || true
