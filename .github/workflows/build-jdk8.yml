@@ -2,7 +2,7 @@ name: Build JDK 8 aarch64
 
 on:
   push:
-    branches: [ jdk8 ]
+    branches: [ openjdk-jre8 ]
   workflow_dispatch:
 
 jobs:
