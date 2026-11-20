@@ -113,6 +113,13 @@ done
 sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
 # USE_CLANG is empty with our gcc-disguised clang, so drop the GCC-only dep flag.
 sed -i '/DEPFLAGS += -fpch-deps/d' hotspot/make/linux/makefiles/gcc.make
+# The serviceability agent relies on glibc/thread_db and is not needed in a JRE.
+sed -i 's|^include $(MAKEFILES_DIR)/saproc.make$|# saproc is not buildable against bionic; skip it for Android JRE|' hotspot/make/linux/makefiles/vm.make
+sed -i 's|^build: $(LIBJVM) $(LAUNCHER) $(LIBJSIG) $(LIBJVM_DB) $(BUILDLIBSAPROC) dtraceCheck$|build: $(LIBJVM) $(LAUNCHER) $(LIBJSIG) $(LIBJVM_DB) dtraceCheck|' hotspot/make/linux/makefiles/vm.make
+sed -i 's|^install: install_jvm install_jsig install_saproc$|install: install_jvm install_jsig|' hotspot/make/linux/makefiles/vm.make
+sed -i '/^ADD_SA_BINARIES\/aarch64 = /,+1d' hotspot/make/linux/makefiles/defs.make
+sed -i '/^[[:space:]]*ADD_SA_BINARIES\/aarch64 += /d' hotspot/make/linux/makefiles/defs.make
+echo 'ADD_SA_BINARIES/aarch64 =' >> hotspot/make/linux/makefiles/defs.make
 
 echo "==> Preparing toolchain headers"
 ln -sfn /usr/include/X11 "$TOOLCHAIN/sysroot/usr/include/X11"
