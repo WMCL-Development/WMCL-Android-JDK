@@ -120,6 +120,9 @@ cat > "$WORK/android-wrapped-clang" <<EOF
 #!/usr/bin/env bash
 if [ "$1" = "--version" ]; then
   echo "$TARGET-gcc (GCC) 4.9 20140827 (prerelease)"
+  echo "Copyright (C) 2014 Free Software Foundation, Inc."
+  echo "This is free software; see the source for copying conditions.  There is NO"
+  echo "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
   exit 0
 fi
 exec "$TOOLCHAIN/bin/$TARGET$API-clang" -Wno-unknown-warning-option "$@"
@@ -128,6 +131,9 @@ cat > "$WORK/android-wrapped-clang++" <<EOF
 #!/usr/bin/env bash
 if [ "$1" = "--version" ]; then
   echo "$TARGET-g++ (GCC) 4.9 20140827 (prerelease)"
+  echo "Copyright (C) 2014 Free Software Foundation, Inc."
+  echo "This is free software; see the source for copying conditions.  There is NO"
+  echo "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
   exit 0
 fi
 exec "$TOOLCHAIN/bin/$TARGET$API-clang++" -Wno-unknown-warning-option "$@"
