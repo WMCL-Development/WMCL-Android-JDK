@@ -173,7 +173,6 @@ if ! bash ./configure \
   --with-extra-ldflags="$LDFLAGS" \
   --enable-option-checking=fatal \
   --disable-precompiled-headers \
-  --disable-warnings-as-errors \
   --with-jdk-variant=normal \
   --with-jvm-variants="$JVM_VARIANTS" \
   --with-cups-include="$WORK/cups-$CUPS_VERSION" \
