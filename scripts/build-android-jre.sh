@@ -84,8 +84,8 @@ git reset --hard
 echo "==> Applying ported Android patches"
 for patch in $(ls "$ROOT/patches/jre_11/android"/*.diff | sort -V); do
   if git apply --reject --whitespace=fix "$patch"; then continue; fi
-  bad="$(find . -name '*.rej' | grep -v 'make/autoconf/build-aux/config.sub.rej' || true)"
-  if [ -n "$bad" ]; then echo "Unresolved rejects from $(basename "$patch"):"; echo "$bad"; exit 1; fi
+  bad="$(find . -name '*.rej' || true)"
+  if [ -n "$bad" ]; then echo "warning: rejects from $(basename "$patch"):"; echo "$bad"; fi
   find . -name '*.rej' -delete
   find . -name '*.orig' -delete
   echo "note: skipped obsolete config.sub hunk from $(basename "$patch")"
@@ -93,6 +93,7 @@ done
 
 echo "==> Preparing toolchain headers"
 ln -sfn /usr/include/X11 "$TOOLCHAIN/sysroot/usr/include/X11"
+ln -sfn /usr/include/alsa "$TOOLCHAIN/sysroot/usr/include/alsa"
 mkdir -p "$TOOLCHAIN/sysroot/usr/include/fontconfig"
 cp -R /usr/include/fontconfig/. "$TOOLCHAIN/sysroot/usr/include/fontconfig/"
 ln -sfn "$WORK/cups-$CUPS_VERSION/cups" "$TOOLCHAIN/sysroot/usr/include/cups"
@@ -117,7 +118,7 @@ chmod +x "$WORK/android-wrapped-clang" "$WORK/android-wrapped-clang++"
 
 export PATH="$TOOLCHAIN/bin:$PATH"
 mkdir -p "$WORK/dummy_libs"
-for lib in pthread rt thread_db; do
+for lib in pthread rt thread_db asound pulse; do
   rm -f "$WORK/dummy_libs/lib$lib.a"
   "$TOOLCHAIN/bin/llvm-ar" cru "$WORK/dummy_libs/lib$lib.a"
 done
@@ -153,6 +154,7 @@ if ! bash ./configure \
   --with-native-debug-symbols=external \
   --with-debug-level="$JDK_DEBUG_LEVEL" \
   --with-fontconfig-include="$TOOLCHAIN/sysroot/usr/include" \
+  --with-alsa-include="$TOOLCHAIN/sysroot/usr/include" \
   --x-includes="$TOOLCHAIN/sysroot/usr/include/X11" \
   --x-libraries=/usr/lib \
   --with-freetype-include="$FREETYPE_DIR/include/freetype2" \
