@@ -255,28 +255,36 @@ if [ -z "$JDK_IMAGE" ] && [ "$JDK_MAJOR" = "8" ]; then
 fi
 test -d "$JDK_IMAGE"
 
-# The full JDK image already contains everything a launcher expects (javac,
-# jmods, ct.sym, fontconfig database, fonts); ship it as-is.  libc++_shared is
-# still needed because the NDK clang++ links libjvm against it dynamically and
-# the external Android freetype build is not part of the JDK image.
-LIBCXX_SHARED="$(find "$TOOLCHAIN/sysroot/usr/lib/$TARGET" -maxdepth 1 -name 'libc++_shared.so' 2>/dev/null | head -n 1)"
-LIBCXX_DIR="$JDK_IMAGE/lib/aarch64"
-if [ ! -d "$LIBCXX_DIR" ]; then LIBCXX_DIR="$JDK_IMAGE/lib"; fi
-if [ -n "$LIBCXX_SHARED" ] && [ -d "$LIBCXX_DIR" ]; then
-  cp -f "$LIBCXX_SHARED" "$LIBCXX_DIR/"
+# Native runtime libraries live under jre/lib/<arch> in the JDK 8 image and
+# directly under lib/ for JDK 11+; JRE-facing resources (fonts, fontconfig
+# database) sit in the same lib root.
+LIB_ROOT="$JDK_IMAGE/lib"
+NATIVE_DIR="$LIB_ROOT/$TARGET_JDK"
+if [ "$JDK_MAJOR" = "8" ]; then
+  LIB_ROOT="$JDK_IMAGE/jre/lib"
+  NATIVE_DIR="$LIB_ROOT/$TARGET_JDK"
 fi
-if [ -d "$JDK_IMAGE/lib" ]; then
-  if [ -f "$FREETYPE_DIR/lib/libfreetype.so" ]; then
-    cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$JDK_IMAGE/lib/"
+[ -d "$NATIVE_DIR" ] || NATIVE_DIR="$LIB_ROOT"
+LIBCXX_SHARED="$(find "$TOOLCHAIN/sysroot/usr/lib/$TARGET" -maxdepth 1 -name 'libc++_shared.so' 2>/dev/null | head -n 1)"
+if [ -n "$LIBCXX_SHARED" ] && [ -d "$NATIVE_DIR" ]; then
+  cp -f "$LIBCXX_SHARED" "$NATIVE_DIR/"
+fi
+# The external Android freetype build is linked by libfontmanager.
+if [ -f "$FREETYPE_DIR/lib/libfreetype.so" ]; then
+  if [ -d "$NATIVE_DIR" ]; then
+    cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$NATIVE_DIR/"
+  fi
+  # Older layouts keep a copy at the image root as well.
+  if [ -d "$LIB_ROOT" ]; then
+    cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$LIB_ROOT/"
   fi
 fi
-
 # Android headless builds omit the closed fontconfig database and Lucida fonts;
 # Amethyst ships them as jre_override/lib.  Carry the same files so
 # java.desktop can initialise FontConfiguration (needed by Minecraft's
 # Cacio agent during premain).
-if [ -d "$SRC_DIR/jre_override/lib" ]; then
-  cp -a "$SRC_DIR/jre_override/lib/." "$JDK_IMAGE/lib/"
+if [ -d "$SRC_DIR/jre_override/lib" ] && [ -d "$LIB_ROOT" ]; then
+  cp -a "$SRC_DIR/jre_override/lib/." "$LIB_ROOT/"
 fi
 
 echo "==> Packing JDK image"
