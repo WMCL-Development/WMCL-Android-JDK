@@ -67,7 +67,8 @@ if [ ! -d "$FREETYPE_DIR" ]; then
     export PATH="$TOOLCHAIN/bin:$PATH"
     export CC="$TOOLCHAIN/bin/$TARGET$API-clang"
     export CXX="$TOOLCHAIN/bin/$TARGET$API-clang++"
-    ./configure --host="$TARGET" --prefix="$FREETYPE_DIR" --without-zlib --with-png=no --with-harfbuzz=no CFLAGS="--sysroot=$TOOLCHAIN/sysroot" LDFLAGS="--sysroot=$TOOLCHAIN/sysroot"
+    ./configure --host="$TARGET" --prefix="$FREETYPE_DIR" --without-zlib --with-png=no --with-harfbuzz=no \
+      CFLAGS="--sysroot=$TOOLCHAIN/sysroot" LDFLAGS="--sysroot=$TOOLCHAIN/sysroot"
     CFLAGS="-fno-rtti --sysroot=$TOOLCHAIN/sysroot" CXXFLAGS="-fno-rtti --sysroot=$TOOLCHAIN/sysroot" make -j"$(nproc)"
     make install
   )
@@ -132,8 +133,8 @@ done
 export CFLAGS="-DLE_STANDALONE -O3 -D__ANDROID__ -I$TOOLCHAIN/sysroot/usr/include"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="-L$WORK/dummy_libs -Wl,--undefined-version"
-export CC="$WORK/android-wrapped-clang"
-export CXX="$WORK/android-wrapped-clang++"
+export CC="$TOOLCHAIN/bin/$TARGET$API-clang"
+export CXX="$TOOLCHAIN/bin/$TARGET$API-clang++"
 export AR="$TOOLCHAIN/bin/llvm-ar"
 export AS="$TOOLCHAIN/bin/llvm-as"
 export LD="$TOOLCHAIN/bin/ld"
@@ -143,10 +144,23 @@ export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
 export STRIP="$TOOLCHAIN/bin/llvm-strip"
 
 echo "==> Configuring OpenJDK $JDK_VERSION for $TARGET"
-bash ./configure   --openjdk-target="$TARGET"   --with-toolchain-type=gcc   --with-extra-cflags="$CFLAGS"   --with-extra-cxxflags="$CXXFLAGS"   --with-extra-ldflags="$LDFLAGS"   --disable-precompiled-headers   --disable-warnings-as-errors   --enable-option-checking=fatal   --enable-headless-only=yes   --with-jvm-variants="$JVM_VARIANTS"   --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc   --with-cups-include="$WORK/cups-$CUPS_VERSION"   --with-devkit="$TOOLCHAIN"   --with-native-debug-symbols=external   --with-debug-level="$JDK_DEBUG_LEVEL"   --with-fontconfig-include="$TOOLCHAIN/sysroot/usr/include"   --x-includes="$TOOLCHAIN/sysroot/usr/include/X11"   --x-libraries=/usr/lib   --with-freetype-include="$FREETYPE_DIR/include/freetype2"   --with-freetype-lib="$FREETYPE_DIR/lib"
-
-
-; then
+if ! bash ./configure \
+  --openjdk-target="$TARGET" \
+  --with-toolchain-type=gcc \
+  --with-extra-cflags="$CFLAGS" \
+  --with-extra-cxxflags="$CXXFLAGS" \
+  --with-extra-ldflags="$LDFLAGS" \
+  --enable-option-checking=fatal \
+  --with-jdk-variant=normal \
+  --with-jvm-variants="$JVM_VARIANTS" \
+  --with-cups-include="$WORK/cups-$CUPS_VERSION" \
+  --with-debug-level="$JDK_DEBUG_LEVEL" \
+  --with-fontconfig-include="$TOOLCHAIN/sysroot/usr/include" \
+  --x-includes="$TOOLCHAIN/sysroot/usr/include/X11" \
+  --x-libraries=/usr/lib \
+  --with-freetype-include="$FREETYPE_DIR/include/freetype2" \
+  --with-freetype-lib="$FREETYPE_DIR/lib"
+then
   echo "configure failed; dumping config.log tail" >&2
   tail -n 300 config.log >&2
   exit 1
