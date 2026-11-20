@@ -233,7 +233,7 @@ chmod +x "$WORK/android-wrapped-clang" "$WORK/android-wrapped-clang++"
 
 export PATH="$TOOLCHAIN/bin:$PATH"
 mkdir -p "$WORK/dummy_libs"
-for lib in pthread rt thread_db asound pulse; do
+for lib in pthread rt thread_db asound pulse supc++; do
   rm -f "$WORK/dummy_libs/lib$lib.a"
   "$TOOLCHAIN/bin/llvm-ar" cru "$WORK/dummy_libs/lib$lib.a"
 done
