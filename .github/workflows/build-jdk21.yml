@@ -2,7 +2,7 @@ name: Build JDK 21 aarch64
 
 on:
   push:
-    branches: [ jdk21 ]
+    branches: [ openjdk-jre21 ]
   workflow_dispatch:
 
 jobs:
