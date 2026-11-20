@@ -194,9 +194,9 @@ static size_t tiny_c32rtomb(char* s, char32_t c32, mbstate_t* ps) {
   return 4;
 }
 '''
+    s = s.replace('mbrtoc32(', 'tiny_mbrtoc32(').replace('c32rtomb(', 'tiny_c32rtomb(')
     anchor = '#include "bionic_mbstate.h"\n'
     s = s.replace(anchor, anchor + helpers, 1)
-    s = s.replace('mbrtoc32(', 'tiny_mbrtoc32(').replace('c32rtomb(', 'tiny_c32rtomb(')
     open(p, 'w').write(s)
 PY
 
