@@ -31,7 +31,7 @@ jobs:
       - name: Build JDK 17 aarch64 JRE
         run: bash scripts/build-jdk17-aarch64.sh
 
-      - name: Upload JRE artifact
+      - name: Upload JDK artifact
         uses: actions/upload-artifact@v4
         with:
           name: jre17-android-arm64
