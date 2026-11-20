@@ -122,6 +122,20 @@ if 'if (nbits < 64)' not in s:
     s = s.replace(old, new)
     open(p, 'w').write(s)
 PY
+# Android's allocator tags C++ heap pointers in the top byte. jdk8u's
+# MacroAssembler::adrp only restores the low 48 bits after ADRP, so any adrp
+# to a tagged address (e.g. Universe::heap()->top_addr()) trips the movk
+# immediate guarantee. Restore the top 16 bits as well.
+python3 - <<'PY'
+p = 'hotspot/src/cpu/aarch64/vm/macroAssembler_aarch64.cpp'
+s = open(p).read()
+if 'target >> 48' not in s:
+    old = '    _adrp(reg1, (address)adrp_target);\n    movk(reg1, target >> 32, 32);'
+    new = '    _adrp(reg1, (address)adrp_target);\n    movk(reg1, (target >> 32) & 0xffff, 32);\n    // Android heap pointers are tagged in bits 48-63 (scudo/MTE), so carry\n    // the tag into the register too.\n    movk(reg1, (target >> 48) & 0xffff, 48);'
+    assert s.count(old) == 1, s.count(old)
+    s = s.replace(old, new)
+    open(p, 'w').write(s)
+PY
 # Hotspot defaults to clang PCH, which passes gcc-only -fpch-deps to clang.
 sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
 # USE_CLANG is empty with our gcc-disguised clang, so drop the GCC-only dep flag.
