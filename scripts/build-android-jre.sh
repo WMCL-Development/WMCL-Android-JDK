@@ -92,12 +92,57 @@ test -d "$SRC_DIR/patches/jre_21/android"
 echo "==> Applying Android patches"
 for patch in $(ls "$SRC_DIR/patches/jre_21/android"/*.diff | sort -V); do
   if git apply --reject --whitespace=fix "$patch"; then continue; fi
-  bad="$(find . -name '*.rej' || true)"
-  if [ -n "$bad" ]; then echo "warning: rejects from $(basename "$patch"):"; echo "$bad"; fi
-  find . -name '*.rej' -delete
-  find . -name '*.orig' -delete
-  echo "note: skipped obsolete config.sub hunk from $(basename "$patch")"
+  # Only the hunks listed below are known to drift against 21.0.13.1; they are
+  # re-applied manually after the loop. Anything else is fatal.
+  bad="$(find . -name '*.rej' -print | grep -vE '(^\./make/autoconf/flags-cflags\.m4\.rej$)|(^\./make/hotspot/lib/JvmMapfile\.gmk\.rej$)|(^\./src/java.base/unix/native/libnio/fs/UnixNativeDispatcher\.c\.rej$)|(^\./make/autoconf/build-aux/config\.sub\.rej$)' || true)"
+  if [ -n "$bad" ]; then echo "Unresolved rejects from $(basename "$patch"):"; echo "$bad"; exit 1; fi
 done
+
+echo "==> Re-applying hunks that drifted against 21.0.13.1"
+# flags-cflags.m4: expose BSD interfaces required by bionic.
+if ! grep -q -- '-D__USE_BSD' make/autoconf/flags-cflags.m4; then
+  sed -i 's|^    CFLAGS_OS_DEF_JDK="-D_GNU_SOURCE -D_REENTRANT -D_LARGEFILE64_SOURCE"$|    CFLAGS_OS_DEF_JDK="-D_GNU_SOURCE -D_REENTRANT -D_LARGEFILE64_SOURCE -D__USE_BSD"|' make/autoconf/flags-cflags.m4
+fi
+# JvmMapfile.gmk: treat android as a linux target when dumping dynamic symbols.
+sed -i 's|^ifeq ($(call isTargetOs, linux), true)$|ifeq ($(call isTargetOs, android linux), true)|' make/hotspot/lib/JvmMapfile.gmk
+# UnixNativeDispatcher.c: utimensat fallback plus reentrant group lookup shims.
+UNIX_DISPATCHER=src/java.base/unix/native/libnio/fs/UnixNativeDispatcher.c
+if ! grep -q 'static utimensat_func\* my_utimensat_func' "$UNIX_DISPATCHER"; then
+  sed -i '/static futimesat_func\* my_futimesat_func = NULL;/a static utimensat_func* my_utimensat_func = NULL;' "$UNIX_DISPATCHER"
+fi
+if ! grep -q '^int getgrgid_r(' "$UNIX_DISPATCHER"; then
+  cat > "$WORK/android-getgr-shim.c" <<'SHIM'
+#ifdef __ANDROID__
+/*
+ * Android lacks the reentrant group lookup entry points used below.
+ */
+int getgrgid_r(gid_t gid, struct group* grp, char* buf, size_t buflen, struct group** result) {
+  *result = NULL;
+  errno = 0;
+  grp = getgrgid(gid);
+  if (grp == NULL) {
+    return errno;
+  }
+  *result = grp;
+  return 0;
+}
+
+int getgrnam_r(const char *name, struct group* grp, char* buf, size_t buflen, struct group** result) {
+  *result = NULL;
+  errno = 0;
+  grp = getgrnam(name);
+  if (grp == NULL) {
+    return errno;
+  }
+  *result = grp;
+  return 0;
+}
+#endif
+SHIM
+  sed -i '/static fdopendir_func\* my_fdopendir_func = NULL;/r '"$WORK"'/android-getgr-shim.c' "$UNIX_DISPATCHER"
+fi
+find . -name '*.rej' -delete
+find . -name '*.orig' -delete
 
 echo "==> Preparing toolchain headers"
 ln -sfn /usr/include/X11 "$TOOLCHAIN/sysroot/usr/include/X11"
@@ -147,6 +192,7 @@ export STRIP="$TOOLCHAIN/bin/llvm-strip"
 echo "==> Configuring OpenJDK $JDK_VERSION for $TARGET"
 if ! bash ./configure \
   --openjdk-target="$TARGET" \
+  --with-build-jdk="$JAVA_HOME" \
   --with-toolchain-type=clang \
   --with-sysroot="$TOOLCHAIN/sysroot" \
   --with-extra-cflags="$CFLAGS" \
@@ -159,7 +205,7 @@ if ! bash ./configure \
   --with-jvm-variants="$JVM_VARIANTS" \
   --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc \
   --with-cups-include="$WORK/cups-$CUPS_VERSION" \
-  --with-native-debug-symbols=external \
+  --with-native-debug-symbols=none \
   --with-debug-level="$JDK_DEBUG_LEVEL" \
   --with-fontconfig-include="$TOOLCHAIN/sysroot/usr/include" \
   --with-alsa-include="$TOOLCHAIN/sysroot/usr/include" \
