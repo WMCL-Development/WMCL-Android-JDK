@@ -223,7 +223,12 @@ else
     echo "ERROR: none of the requested modules exist in $MODULE_PATH" >&2
     exit 1
   fi
-  "$JAVA_HOME/bin/jlink"     --module-path "$MODULE_PATH"     --add-modules "$ADD_MODULES"     --output "$JRE_IMAGE"     --no-man-pages     --no-header-files     --release-info="$JDK_IMAGE/release"     --compress=0
+  echo "  jlink modules: $ADD_MODULES"
+  # JDK 11's jlink has neither --list-modules nor --release-info.
+  "$JAVA_HOME/bin/jlink"     --module-path "$MODULE_PATH"     --add-modules "$ADD_MODULES"     --output "$JRE_IMAGE"     --no-man-pages     --no-header-files     --compress=0
+  if ! grep -q '^JAVA_VERSION=' "$JRE_IMAGE/release" 2>/dev/null; then
+    grep '^JAVA_VERSION=' "$JDK_IMAGE/release" >> "$JRE_IMAGE/release"
+  fi
 fi
 if [ -f "$FREETYPE_DIR/lib/libfreetype.so" ]; then
   cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$JRE_IMAGE/lib/"
