@@ -56,7 +56,7 @@
 - jdk11/17/21 的 `lib/libsleef.so` 与 Amethyst 同版本一样不存在，不是缺失；jdk25 的两边都有。
 - 允许差异仅限 JDK 版本、legal 文档、版本特有工具；任何 Android 会加载的 `lib/*.so` 或运行资源缺失都算失败。
 - 目前所有版本 blocker = 0。
-- FCL 的 `RuntimeUtils.patchJava 和 Amethyst 的 `MultiRTUtils.postPrepare 都会从 APK 的 nativeLibraryDir 复制 `libawt_xawt.so`（dummy）到运行时 `lib/`。Android 没有真实 X11 后端，这个 dummy 是给 Cacio/AWT 兜底。我们的包不带它；WMCL 启动器接入时要执行同样的注入，或把 dummy 放进包。
+- FCL 的 `RuntimeUtils.patchJava` 和 Amethyst 的 `MultiRTUtils.postPrepare` 都会从 APK 的 nativeLibraryDir 复制 `libawt_xawt.so`（dummy）到运行时 `lib/`。Android 没有真实 X11 后端，这个 dummy 是给 Cacio/AWT 兜底。我们的包不带它；WMCL 启动器接入时要执行同样的注入，或把 dummy 放进包。
 
 ## 许可证
 
