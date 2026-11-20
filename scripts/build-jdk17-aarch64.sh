@@ -123,10 +123,11 @@ exec "$TOOLCHAIN/bin/$TARGET$API-clang++" -Wno-unknown-warning-option "$@"
 EOF
 chmod +x "$WORK/android-wrapped-clang" "$WORK/android-wrapped-clang++"
 
+export PATH="$TOOLCHAIN/bin:$PATH"
 mkdir -p "$WORK/dummy_libs"
 for lib in pthread rt thread_db; do
   rm -f "$WORK/dummy_libs/lib$lib.a"
-  llvm-ar cru "$WORK/dummy_libs/lib$lib.a"
+  "$TOOLCHAIN/bin/llvm-ar" cru "$WORK/dummy_libs/lib$lib.a"
 done
 
 export CFLAGS="-DLE_STANDALONE -O3 -mllvm -polly -DANDROID -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$TOOLCHAIN/sysroot/usr/include"
