@@ -147,7 +147,9 @@ for lib in pthread rt thread_db asound pulse; do
   "$TOOLCHAIN/bin/llvm-ar" cru "$WORK/dummy_libs/lib$lib.a"
 done
 
-export CFLAGS="-DLE_STANDALONE -O3 -D__ANDROID__ -I$TOOLCHAIN/sysroot/usr/include"
+# The NDK clang driver adds its own sysroot; do not leak the target include
+# path into the environment because it also affects host build tools.
+export CFLAGS="-DLE_STANDALONE -O3 -D__ANDROID__"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="-L$WORK/dummy_libs -Wl,--undefined-version"
 # JDK 8 configure insists on a gcc toolchain, so route the Android clang
@@ -189,6 +191,8 @@ fi
 echo "==> Building OpenJDK images"
 BUILD_DIR="$(find build -maxdepth 1 -type d -name "linux-$TARGET_JDK-*" | head -n 1)"
 test -d "$BUILD_DIR"
+# Keep the target compiler flags out of the host tool builds.
+unset CFLAGS CXXFLAGS LDFLAGS
 make -C "$BUILD_DIR" JOBS="$(nproc)" images
 
 echo "==> Creating JRE image"
