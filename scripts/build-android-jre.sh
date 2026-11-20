@@ -143,6 +143,18 @@ PY
 # through an asm barrier in value() so the real bits reach the tests.
 sed -i 's|^  uintptr_t value() const { return (uintptr_t) this; }$|  uintptr_t value() const {\n    uintptr_t v = (uintptr_t) this;\n    __asm__ __volatile__("" : "+r"(v));\n    return v;\n  }|' hotspot/src/share/vm/oops/markOop.hpp
 grep -q 'uintptr_t v = (uintptr_t) this;' hotspot/src/share/vm/oops/markOop.hpp || { echo 'markOop value() barrier patch did not apply'; exit 1; }
+# The relocation path also rebuilds the adrp target with a movk16, and the
+# target may carry an Android pointer tag in bits 48-63; mask it there too.
+python3 - <<'PY'
+p = 'hotspot/src/cpu/aarch64/vm/macroAssembler_aarch64.cpp'
+s = open(p).read()
+old = 'Instruction_aarch64::patch(branch + 4, 20, 5, (uint64_t)target >> 32);'
+new = 'Instruction_aarch64::patch(branch + 4, 20, 5, ((uint64_t)target >> 32) & 0xffff);'
+if old in s:
+    s = s.replace(old, new)
+    open(p, 'w').write(s)
+PY
+grep -q '((uint64_t)target >> 32) & 0xffff' hotspot/src/cpu/aarch64/vm/macroAssembler_aarch64.cpp || { echo 'adrp relocation mask patch did not apply'; exit 1; }
 # Hotspot defaults to clang PCH, which passes gcc-only -fpch-deps to clang.
 sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
 # USE_CLANG is empty with our gcc-disguised clang, so drop the GCC-only dep flag.
