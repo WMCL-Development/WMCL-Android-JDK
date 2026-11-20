@@ -238,6 +238,28 @@ if [ -d "$SRC_DIR/jre_override/lib" ] && [ -d "$LIB_ROOT" ]; then
   cp -a "$SRC_DIR/jre_override/lib/." "$LIB_ROOT/"
 fi
 
+# Strip native libraries with the NDK toolchain (same as FCL/Amethyst) and run
+# termux-elf-cleaner so Android's linker accepts the ELF metadata.  --strip-unneeded
+# keeps the dynamic symbol table, so libjvm's exported JNI/JVM symbols stay intact.
+BEFORE_KB=$(du -sk "$JDK_IMAGE" | cut -f1)
+if [ -x "$TOOLCHAIN/bin/llvm-strip" ]; then
+  find "$JDK_IMAGE" -type f -name '*.so' -exec "$TOOLCHAIN/bin/llvm-strip" --strip-unneeded {} + 2>/dev/null || true
+fi
+TERMUX_ELF_CLEANER="$WORK/termux-elf-cleaner/build/termux-elf-cleaner"
+if [ ! -x "$TERMUX_ELF_CLEANER" ]; then
+  rm -rf "$WORK/termux-elf-cleaner"
+  git clone --depth 1 https://github.com/termux/termux-elf-cleaner "$WORK/termux-elf-cleaner" >/dev/null 2>&1 || true
+  if [ -d "$WORK/termux-elf-cleaner" ]; then
+    ( cd "$WORK/termux-elf-cleaner" && mkdir -p build && cd build && cmake .. >/dev/null 2>&1 && make -j"$(nproc)" >/dev/null 2>&1 ) || true
+  fi
+fi
+if [ -x "$TERMUX_ELF_CLEANER" ]; then
+  find "$JDK_IMAGE" -type f -name '*.so' -exec "$TERMUX_ELF_CLEANER" --api-level 24 {} \; >/dev/null 2>&1 || true
+  find "$JDK_IMAGE"/bin -type f -exec "$TERMUX_ELF_CLEANER" --api-level 24 {} \; >/dev/null 2>&1 || true
+fi
+AFTER_KB=$(du -sk "$JDK_IMAGE" | cut -f1)
+echo "image size before/after strip: ${BEFORE_KB}KB / ${AFTER_KB}KB"
+
 echo "==> Packing JDK image"
 tar cJf "$OUT/jdk$JDK_MAJOR-android-$TARGET_SHORT.tar.xz" -C "$JDK_IMAGE" .
 ls -lh "$OUT"
