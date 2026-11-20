@@ -201,10 +201,13 @@ else
   JRE_IMAGE="$WORK/jre-$JDK_MAJOR-image"
   rm -rf "$JRE_IMAGE"
   MODULE_PATH="$JDK_IMAGE/jmods"
-  if [ ! -d "$MODULE_PATH" ]; then MODULE_PATH="$BUILD_DIR/jmods"; fi
+  if [ ! -d "$MODULE_PATH" ] && [ -d "$BUILD_DIR/images/jmods" ]; then
+    MODULE_PATH="$BUILD_DIR/images/jmods"
+  fi
+  test -d "$MODULE_PATH"
   MODULES="java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.management.rmi,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.se,java.security.jgss,java.security.sasl,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.accessibility,jdk.charsets,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.dynalink,jdk.httpserver,jdk.jdwp.agent,jdk.jfr,jdk.jsobject,jdk.localedata,jdk.management,jdk.management.agent,jdk.management.jfr,jdk.naming.dns,jdk.naming.rmi,jdk.net,jdk.nio.mapmode,jdk.sctp,jdk.security.auth,jdk.security.jgss,jdk.unsupported,jdk.xml.dom,jdk.zipfs"
   # Drop modules that this JDK version does not provide (e.g. jdk.nio.mapmode on 11).
-  AVAILABLE="$("$JAVA_HOME/bin/jlink" --module-path "$MODULE_PATH" --list-modules 2>/dev/null | cut -d@ -f1)"
+  AVAILABLE="$("$JAVA_HOME/bin/jlink" --module-path "$MODULE_PATH" --list-modules | cut -d@ -f1)"
   ADD_MODULES=""
   for m in $(echo "$MODULES" | tr ',' ' '); do
     if printf '%s\n' "$AVAILABLE" | grep -qx "$m"; then ADD_MODULES="$ADD_MODULES,$m"; fi
