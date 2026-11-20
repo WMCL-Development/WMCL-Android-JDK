@@ -144,8 +144,10 @@ done
 export CFLAGS="-DLE_STANDALONE -O3 -D__ANDROID__ -I$TOOLCHAIN/sysroot/usr/include"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="-L$WORK/dummy_libs -Wl,--undefined-version"
-export CC="$TOOLCHAIN/bin/$TARGET$API-clang"
-export CXX="$TOOLCHAIN/bin/$TARGET$API-clang++"
+# JDK 8 configure insists on a gcc toolchain, so route the Android clang
+# through wrappers that report a GCC version string.
+export CC="$WORK/android-wrapped-clang"
+export CXX="$WORK/android-wrapped-clang++"
 export AR="$TOOLCHAIN/bin/llvm-ar"
 export AS="$TOOLCHAIN/bin/llvm-as"
 export LD="$TOOLCHAIN/bin/ld"
