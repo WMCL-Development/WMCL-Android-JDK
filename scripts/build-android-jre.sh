@@ -123,19 +123,21 @@ if 'if (nbits < 64)' not in s:
     open(p, 'w').write(s)
 PY
 # Android's allocator tags C++ heap pointers in the top byte. jdk8u's
-# MacroAssembler::adrp only restores the low 48 bits after ADRP, so any adrp
-# to a tagged address (e.g. Universe::heap()->top_addr()) trips the movk
-# immediate guarantee. Restore the top 16 bits as well.
+# MacroAssembler::adrp restores the low 48 bits with adrp+movk, so a tagged
+# address (e.g. Universe::heap()->top_addr()) trips the movk guarantee. Use the
+# untagged address (top-byte-ignore makes it equivalent) and keep the original
+# two-instruction sequence.
 python3 - <<'PY'
 p = 'hotspot/src/cpu/aarch64/vm/macroAssembler_aarch64.cpp'
 s = open(p).read()
-if 'target >> 48' not in s:
-    old = '    _adrp(reg1, (address)adrp_target);\n    movk(reg1, target >> 32, 32);'
-    new = '    _adrp(reg1, (address)adrp_target);\n    movk(reg1, (target >> 32) & 0xffff, 32);\n    // Android heap pointers are tagged in bits 48-63 (scudo/MTE), so carry\n    // the tag into the register too.\n    movk(reg1, (target >> 48) & 0xffff, 48);'
+if '0x0000ffffffffffffUL' not in s:
+    old = '    unsigned long target = (unsigned long)dest.target();\n    unsigned long adrp_target'
+    new = '    unsigned long target = (unsigned long)dest.target() & 0x0000ffffffffffffUL;\n    unsigned long adrp_target'
     assert s.count(old) == 1, s.count(old)
     s = s.replace(old, new)
     open(p, 'w').write(s)
 PY
+grep -q '0x0000ffffffffffffUL' hotspot/src/cpu/aarch64/vm/macroAssembler_aarch64.cpp || { echo 'adrp tag mask patch did not apply'; exit 1; }
 # clang assumes markOopDesc* (which inherits oopDesc's 8-byte alignment) is
 # really aligned, so it constant-folds the mark-word bit tests: has_locker()
 # becomes true and has_monitor() false for a neutral mark word, and inflate()
