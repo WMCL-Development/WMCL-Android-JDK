@@ -91,6 +91,26 @@ for patch in $(ls "$ROOT/patches/jre_11/android"/*.diff | sort -V); do
   echo "note: skipped obsolete config.sub hunk from $(basename "$patch")"
 done
 
+echo "==> Re-applying hunks that drifted against 11.0.33.1"
+python3 - <<'PY'
+p = 'make/lib/Lib-jdk.jdwp.agent.gmk'
+s = open(p).read()
+if 'EXTRA_SRC := java.base:libtinyiconv' not in s:
+    s = s.replace("    CFLAGS := $(CFLAGS_JDKLIB) -DJDWP_LOGGING, \\\n",
+                  "    CFLAGS := $(CFLAGS_JDKLIB) -DJDWP_LOGGING, \\\n    CXXFLAGS := $(CXXFLAGS_JDKLIB), \\\n", 1)
+    idx = s.index("    NAME := jdwp, \\")
+    head, tail = s[:idx], s[idx:]
+    tail = tail.replace("      libjdwp/export, \\\n", "      libjdwp/export, \\\n    EXTRA_SRC := java.base:libtinyiconv, \\\n", 1)
+    open(p, 'w').write(head + tail)
+
+p = 'src/hotspot/os/linux/os_linux.cpp'
+s = open(p).read()
+old = 'const char* os::get_temp_directory() { return "/tmp"; }'
+new = 'const char* os::get_temp_directory() {\n#ifndef __ANDROID__\n  return "/tmp";\n#else\n  return "/data/tmp";\n#endif\n}'
+if old in s:
+    open(p, 'w').write(s.replace(old, new, 1))
+PY
+
 echo "==> Preparing toolchain headers"
 ln -sfn /usr/include/X11 "$TOOLCHAIN/sysroot/usr/include/X11"
 ln -sfn /usr/include/alsa "$TOOLCHAIN/sysroot/usr/include/alsa"
