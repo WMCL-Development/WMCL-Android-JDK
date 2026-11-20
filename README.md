@@ -1,4 +1,4 @@
-# wmcl-android-jdk
+# WMCL-Android-JDK
 
 为 WMCL 构建 Android arm64 的运行时 OpenJDK JDK（含 javac/ct.sym，不含 jmods/src.zip/demo/include/man；jlink 不可用）。
 
