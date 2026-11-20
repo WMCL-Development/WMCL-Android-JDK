@@ -1,0 +1,162 @@
+# Runtime JDK 21 parity report vs Amethyst jre21 (arm64)
+
+Summary: runtime-file missing = 0 (blockers = 0)
+Allowed differences:
+  - extras: JDK-only files (bin/javac, lib/ct.sym, ...) not present in the Amethyst JRE package
+  - size mismatches: build-config only
+# Amethyst parity report: jdk21
+# our artifact: /tmp/finalart/44742448783/x/jdk21-android-arm64.tar.xz (39889700 bytes)
+# Amethyst package: /tmp/amethyst-pkgs/jre21-android-arm64.tar.xz (28675516 bytes)
+
+paths: ours=437 amethyst=307 common=307
+missing=0 extra=130 size-mismatch=56 type-mismatch=0
+missing category counts: blocker(cat1)=0 non-blocking-desktop(cat2)=0 build-config(cat3)=0
+
+## key runtime files (ours)
+  bin/java: OK
+  bin/javac: OK
+  bin/jlink: OK
+  bin/javap: OK
+  bin/keytool: OK
+  lib/modules: OK
+  lib/jvm.cfg: OK
+  lib/ct.sym: OK
+  lib/fontconfig.properties: OK
+  lib/fonts/LucidaSansRegular.ttf: OK
+  lib/security/cacerts: OK
+  lib/server/libjvm.so: OK
+  lib/libsleef.so: MISSING
+  lib/libawt.so: OK
+  lib/libjava.so: OK
+  lib/libjli.so: OK
+  lib/jrt-fs.jar: OK
+  release: OK
+
+## cat1 potential blockers (missing)
+
+## cat2 non-blocking desktop backends (missing)
+
+## cat3 build-config/legal differences (missing)
+
+## extra files (ours only), first 60
+  + bin/jar
+  + bin/jarsigner
+  + bin/javac
+  + bin/javadoc
+  + bin/javap
+  + bin/jcmd
+  + bin/jconsole
+  + bin/jdb
+  + bin/jdeprscan
+  + bin/jdeps
+  + bin/jhsdb
+  + bin/jimage
+  + bin/jinfo
+  + bin/jlink
+  + bin/jmap
+  + bin/jmod
+  + bin/jpackage
+  + bin/jps
+  + bin/jshell
+  + bin/jstack
+  + bin/jstat
+  + bin/jstatd
+  + bin/serialver
+  + legal/java.base/siphash.md
+  + legal/java.smartcardio
+  + legal/java.smartcardio/ADDITIONAL_LICENSE_INFO
+  + legal/java.smartcardio/ASSEMBLY_EXCEPTION
+  + legal/java.smartcardio/LICENSE
+  + legal/java.smartcardio/pcsclite.md
+  + legal/jdk.attach
+  + legal/jdk.attach/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.attach/ASSEMBLY_EXCEPTION
+  + legal/jdk.attach/LICENSE
+  + legal/jdk.compiler
+  + legal/jdk.compiler/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.compiler/ASSEMBLY_EXCEPTION
+  + legal/jdk.compiler/LICENSE
+  + legal/jdk.editpad
+  + legal/jdk.editpad/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.editpad/ASSEMBLY_EXCEPTION
+  + legal/jdk.editpad/LICENSE
+  + legal/jdk.hotspot.agent
+  + legal/jdk.hotspot.agent/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.hotspot.agent/ASSEMBLY_EXCEPTION
+  + legal/jdk.hotspot.agent/LICENSE
+  + legal/jdk.incubator.vector
+  + legal/jdk.incubator.vector/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.incubator.vector/ASSEMBLY_EXCEPTION
+  + legal/jdk.incubator.vector/LICENSE
+  + legal/jdk.internal.ed
+  + legal/jdk.internal.ed/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.internal.ed/ASSEMBLY_EXCEPTION
+  + legal/jdk.internal.ed/LICENSE
+  + legal/jdk.internal.jvmstat
+  + legal/jdk.internal.jvmstat/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.internal.jvmstat/ASSEMBLY_EXCEPTION
+  + legal/jdk.internal.jvmstat/LICENSE
+  + legal/jdk.internal.le
+  + legal/jdk.internal.le/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.internal.le/ASSEMBLY_EXCEPTION
+  ... 70 more
+
+## size mismatches (ours vs amethyst), first 60
+  ~ bin/jfr: 7776 vs 7768
+  ~ conf/net.properties: 7441 vs 6608
+  ~ conf/security/java.security: 73677 vs 64249
+  ~ legal/java.desktop/giflib.md: 1689 vs 1288
+  ~ legal/java.desktop/harfbuzz.md: 3629 vs 3314
+  ~ legal/java.desktop/lcms.md: 2654 vs 2630
+  ~ legal/java.desktop/libpng.md: 7556 vs 6941
+  ~ legal/java.desktop/pipewire.md: 1479 vs 1414
+  ~ legal/java.xml.crypto/santuario.md: 11505 vs 11499
+  ~ legal/java.xml/bcel.md: 11196 vs 11195
+  ~ legal/jdk.crypto.cryptoki/pkcs11cryptotoken.md: 4095 vs 3923
+  ~ lib/classlist: 77292 vs 78876
+  ~ lib/jexec: 8520 vs 8696
+  ~ lib/jfr/default.jfc: 37449 vs 37404
+  ~ lib/jfr/profile.jfc: 37401 vs 37361
+  ~ lib/jrt-fs.jar: 110128 vs 110127
+  ~ lib/jspawnhelper: 15200 vs 14576
+  ~ lib/libawt.so: 587880 vs 588568
+  ~ lib/libawt_headless.so: 28432 vs 28184
+  ~ lib/libdt_socket.so: 22088 vs 22312
+  ~ lib/libextnet.so: 9208 vs 8936
+  ~ lib/libfontmanager.so: 1660488 vs 2171744
+  ~ lib/libfreetype.so: 1033608 vs 684944
+  ~ lib/libinstrument.so: 45744 vs 45656
+  ~ lib/libj2gss.so: 39232 vs 38904
+  ~ lib/libj2pkcs11.so: 81784 vs 81392
+  ~ lib/libjaas.so: 5512 vs 5392
+  ~ lib/libjava.so: 140744 vs 140400
+  ~ lib/libjavajpeg.so: 199296 vs 203288
+  ~ lib/libjawt.so: 3848 vs 3576
+  ~ lib/libjdwp.so: 256112 vs 254944
+  ~ lib/libjimage.so: 323112 vs 304616
+  ~ lib/libjli.so: 57776 vs 57928
+  ~ lib/libjsig.so: 7992 vs 7440
+  ~ lib/liblcms.so: 390848 vs 370560
+  ~ lib/libmanagement.so: 16920 vs 16640
+  ~ lib/libmanagement_agent.so: 4720 vs 4448
+  ~ lib/libmanagement_ext.so: 22720 vs 22168
+  ~ lib/libmlib_image.so: 444648 vs 444376
+  ~ lib/libnet.so: 47688 vs 48128
+  ~ lib/libnio.so: 83200 vs 81464
+  ~ lib/libprefs.so: 5544 vs 5256
+  ~ lib/librmi.so: 3952 vs 3680
+  ~ lib/libsctp.so: 21688 vs 21784
+  ~ lib/libsyslookup.so: 3776 vs 3504
+  ~ lib/libverify.so: 55320 vs 52048
+  ~ lib/libzip.so: 30432 vs 30632
+  ~ lib/modules: 142442807 vs 110789498
+  ~ lib/security/blocked.certs: 5608 vs 2488
+  ~ lib/security/cacerts: 128625 vs 119884
+  ~ lib/security/default.policy: 10742 vs 10657
+  ~ lib/security/public_suffix_list.dat: 227396 vs 229405
+  ~ lib/server/libjsig.so: 7992 vs 7440
+  ~ lib/server/libjvm.so: 20309328 vs 18497776
+  ~ lib/tzdb.dat: 103988 vs 103785
+  ~ release: 1244 vs 874
+
+## type mismatches
