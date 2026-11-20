@@ -121,6 +121,85 @@ sed -i '/^ADD_SA_BINARIES\/aarch64 = /,+1d' hotspot/make/linux/makefiles/defs.ma
 sed -i '/^[[:space:]]*ADD_SA_BINARIES\/aarch64 += /d' hotspot/make/linux/makefiles/defs.make
 echo 'ADD_SA_BINARIES/aarch64 =' >> hotspot/make/linux/makefiles/defs.make
 
+# bionic at API 21 has no mbrtoc32/c32rtomb and char16_t/char32_t are C++
+# keywords, so patch the generated tinyiconv source for our toolchain.
+python3 - <<'PY'
+p = 'jdk/src/share/tinyiconv/iconv.cpp'
+s = open(p).read()
+if 'tiny_mbrtoc32' not in s:
+    s = s.replace('typedef uint32_t char32_t;\ntypedef uint16_t char16_t;\n',
+                  '#ifndef __cplusplus\ntypedef uint32_t char32_t;\ntypedef uint16_t char16_t;\n#endif\n')
+    helpers = '''
+// bionic does not expose the C11 char32 conversion helpers at API 21, so
+// provide a minimal UTF-8 implementation for the iconv shim.
+static size_t tiny_mbrtoc32(char32_t* pc32, const char* s, size_t n, mbstate_t* ps) {
+  (void)ps;
+  if (n == 0) {
+    errno = EINVAL;
+    return __MB_ERR_INCOMPLETE_SEQUENCE;
+  }
+  const unsigned char* p = (const unsigned char*)s;
+  unsigned char b0 = p[0];
+  if (b0 < 0x80) {
+    if (pc32 != nullptr) *pc32 = b0;
+    return 1;
+  }
+  size_t len;
+  char32_t cp;
+  if ((b0 & 0xe0) == 0xc0) { len = 2; cp = b0 & 0x1f; }
+  else if ((b0 & 0xf0) == 0xe0) { len = 3; cp = b0 & 0x0f; }
+  else if ((b0 & 0xf8) == 0xf0) { len = 4; cp = b0 & 0x07; }
+  else { errno = EILSEQ; return __MB_ERR_ILLEGAL_SEQUENCE; }
+  if (n < len) { errno = EINVAL; return __MB_ERR_INCOMPLETE_SEQUENCE; }
+  for (size_t i = 1; i < len; i++) {
+    unsigned char b = p[i];
+    if ((b & 0xc0) != 0x80) { errno = EILSEQ; return __MB_ERR_ILLEGAL_SEQUENCE; }
+    cp = (cp << 6) | (b & 0x3f);
+  }
+  if ((len == 2 && cp < 0x80) || (len == 3 && cp < 0x800) ||
+      (len == 4 && cp < 0x10000) || cp > 0x10ffff ||
+      (cp >= 0xd800 && cp <= 0xdfff)) {
+    errno = EILSEQ;
+    return __MB_ERR_ILLEGAL_SEQUENCE;
+  }
+  if (pc32 != nullptr) *pc32 = cp;
+  return len;
+}
+
+static size_t tiny_c32rtomb(char* s, char32_t c32, mbstate_t* ps) {
+  (void)ps;
+  if (c32 > 0x10ffff || (c32 >= 0xd800 && c32 <= 0xdfff)) {
+    errno = EILSEQ;
+    return __MB_ERR_ILLEGAL_SEQUENCE;
+  }
+  if (c32 < 0x80) {
+    s[0] = (char)c32;
+    return 1;
+  }
+  if (c32 < 0x800) {
+    s[0] = (char)(0xc0 | (c32 >> 6));
+    s[1] = (char)(0x80 | (c32 & 0x3f));
+    return 2;
+  }
+  if (c32 < 0x10000) {
+    s[0] = (char)(0xe0 | (c32 >> 12));
+    s[1] = (char)(0x80 | ((c32 >> 6) & 0x3f));
+    s[2] = (char)(0x80 | (c32 & 0x3f));
+    return 3;
+  }
+  s[0] = (char)(0xf0 | (c32 >> 18));
+  s[1] = (char)(0x80 | ((c32 >> 12) & 0x3f));
+  s[2] = (char)(0x80 | ((c32 >> 6) & 0x3f));
+  s[3] = (char)(0x80 | (c32 & 0x3f));
+  return 4;
+}
+'''
+    anchor = '#include "bionic_mbstate.h"\n'
+    s = s.replace(anchor, anchor + helpers, 1)
+    s = s.replace('mbrtoc32(', 'tiny_mbrtoc32(').replace('c32rtomb(', 'tiny_c32rtomb(')
+    open(p, 'w').write(s)
+PY
+
 echo "==> Preparing toolchain headers"
 ln -sfn /usr/include/X11 "$TOOLCHAIN/sysroot/usr/include/X11"
 ln -sfn /usr/include/alsa "$TOOLCHAIN/sysroot/usr/include/alsa"
