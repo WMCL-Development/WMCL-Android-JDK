@@ -2,7 +2,7 @@ name: Build JDK 25 aarch64
 
 on:
   push:
-    branches: [ jdk25 ]
+    branches: [ openjdk-jre25 ]
   workflow_dispatch:
 
 jobs:
