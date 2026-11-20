@@ -105,6 +105,69 @@ for patch in $(ls "$SRC_DIR/$PATCH_DIR"/*.diff | sort -V); do
   echo "note: skipped obsolete config.sub hunk from $(basename "$patch")"
 done
 
+# Restore the Android heap pointer tag when a cached CompiledICHolder* is read
+# or released: the aarch64 inline-cache value cell only stores 48 bits, while
+# bionic (scudo) tags C-heap pointers in the top byte and aborts on truncated
+# tags in free().
+python3 - <<'PY'
+p = 'src/hotspot/share/code/compiledIC.cpp'
+s = open(p).read()
+if 'restore_compiled_ic_pointer_tag' not in s:
+    s = s.replace('#include "memory/metadataFactory.hpp"',
+                  '#include "memory/allocation.hpp"\n#include "memory/metadataFactory.hpp"', 1)
+    s = s.replace('#include "runtime/stubRoutines.hpp"',
+                  '#include "runtime/os.hpp"\n#include "runtime/stubRoutines.hpp"', 1)
+    helper = '''
+// On Android the bionic allocator tags C-heap pointers in the top byte (scudo
+// heap tagging; with MTE disabled the tag is a process-wide constant, e.g.
+// 0xb4).  The inline-cache value cell for a virtual call is materialised with
+// movz+movk+movk, i.e. it can only hold 48 bits (see MacroAssembler::movptr()
+// and MacroAssembler::ic_call()), so a CompiledICHolder* read back from it has
+// lost its tag.  bionic's free() aborts when it sees a pointer whose tag was
+// truncated, so restore the process tag before such a holder is dereferenced
+// or released.
+//
+// Scope: only the CompiledICHolder path is retagged.  Metadata values live
+// below the 48-bit boundary and must not be retagged, so callers must only use
+// this helper for value cells that are known to hold a CompiledICHolder*.
+// Rollback: if this ever misbehaves on a platform where heap pointers are not
+// tagged, android_heap_pointer_tag() returns 0 and the helper is a no-op.
+static uintptr_t android_heap_pointer_tag() {
+  static uintptr_t tag = (uintptr_t)-1;
+  if (tag == (uintptr_t)-1) {
+    // Probe once with a known C-heap allocation; 0 means tagging is disabled.
+    void* probe = os::malloc(8, mtInternal);
+    tag = (probe == NULL) ? 0 : ((uintptr_t)probe & 0xff00000000000000ULL);
+    if (probe != NULL) {
+      os::free(probe);
+    }
+  }
+  return tag;
+}
+
+static void* restore_compiled_ic_pointer_tag(void* value) {
+  uintptr_t v = (uintptr_t)value;
+  if (v != 0 && (v >> 48) == 0) {
+    v |= android_heap_pointer_tag();
+  }
+  return (void*)v;
+}
+'''
+    anchor = '// Every time a compiled IC is changed or its type is being accessed,'
+    assert s.count(anchor) == 1, s.count(anchor)
+    s = s.replace(anchor, helper + '\n' + anchor, 1)
+    old = '    void* data = get_data();'
+    new = '    void* data = get_data();\n    if (is_icholder_call()) {\n      data = restore_compiled_ic_pointer_tag(data);\n    }'
+    assert s.count(old) == 1, s.count(old)
+    s = s.replace(old, new)
+    old2 = '    InlineCacheBuffer::queue_for_release((CompiledICHolder*)get_data());'
+    new2 = '    InlineCacheBuffer::queue_for_release(\n        (CompiledICHolder*)restore_compiled_ic_pointer_tag(get_data()));'
+    assert s.count(old2) == 1, s.count(old2)
+    s = s.replace(old2, new2)
+    open(p, 'w').write(s)
+PY
+grep -q 'restore_compiled_ic_pointer_tag' src/hotspot/share/code/compiledIC.cpp || { echo 'compiledIC tag fix did not apply'; exit 1; }
+
 echo "==> Preparing toolchain headers"
 ln -sfn /usr/include/X11 "$TOOLCHAIN/sysroot/usr/include/X11"
 ln -sfn /usr/include/alsa "$TOOLCHAIN/sysroot/usr/include/alsa"
