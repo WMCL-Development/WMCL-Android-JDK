@@ -109,6 +109,9 @@ for NAME in jdk8u_android.diff jdk8u_android_main.diff; do
   echo "note: re-applied drifted autoconf hunks from $NAME"
 done
 
+# Hotspot defaults to clang PCH, which passes gcc-only -fpch-deps to clang.
+sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
+
 echo "==> Preparing toolchain headers"
 ln -sfn /usr/include/X11 "$TOOLCHAIN/sysroot/usr/include/X11"
 ln -sfn /usr/include/alsa "$TOOLCHAIN/sysroot/usr/include/alsa"
