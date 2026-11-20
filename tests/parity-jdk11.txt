@@ -1,0 +1,177 @@
+# Runtime JDK 11 parity report (reference: Amethyst jre17; Amethyst has no jre11 package)
+
+Summary: runtime-file missing = 0 (blockers = 0)
+Allowed differences:
+  - Amethyst has no JDK11 package; compared against their jre17 package for structure.
+  - missing items are version/layout differences only:
+    conf/sdp/* (SDP added in JDK14+), lib/libjli.so (JDK11 keeps it as lib/jli/libjli.so),
+    legal/java.desktop/pipewire.md, legal/jdk.nio.mapmode/* (modules/versions not present in 11)
+  - extras: JDK-only tools (bin/javac, lib/ct.sym, jmods removed...) 
+  - size mismatches: build-config only
+# Amethyst parity report: jdk11
+# our artifact: /tmp/finalart/44742417683/x/jdk11-android-arm64.tar.xz (37493620 bytes)
+# Amethyst package: /tmp/am-jre17.tar.xz (26900804 bytes)
+
+paths: ours=452 amethyst=305 common=297
+missing=8 extra=155 size-mismatch=59 type-mismatch=0
+missing category counts: blocker(cat1)=3 non-blocking-desktop(cat2)=0 build-config(cat3)=5
+
+## key runtime files (ours)
+  bin/java: OK
+  bin/javac: OK
+  bin/jlink: OK
+  bin/javap: OK
+  bin/keytool: OK
+  lib/modules: OK
+  lib/jvm.cfg: OK
+  lib/ct.sym: OK
+  lib/fontconfig.properties: OK
+  lib/fonts/LucidaSansRegular.ttf: OK
+  lib/security/cacerts: OK
+  lib/server/libjvm.so: OK
+  lib/libsleef.so: MISSING
+  lib/libawt.so: OK
+  lib/libjava.so: OK
+  lib/libjli.so: MISSING
+  lib/jrt-fs.jar: OK
+  release: OK
+
+## cat1 potential blockers (missing)
+  - conf/sdp
+  - conf/sdp/sdp.conf.template
+  - lib/libjli.so
+
+## cat2 non-blocking desktop backends (missing)
+
+## cat3 build-config/legal differences (missing)
+  - legal/java.desktop/pipewire.md  (legal/doc/build-config difference)
+  - legal/jdk.nio.mapmode  (legal/doc/build-config difference)
+  - legal/jdk.nio.mapmode/ADDITIONAL_LICENSE_INFO  (legal/doc/build-config difference)
+  - legal/jdk.nio.mapmode/ASSEMBLY_EXCEPTION  (legal/doc/build-config difference)
+  - legal/jdk.nio.mapmode/LICENSE  (legal/doc/build-config difference)
+
+## extra files (ours only), first 60
+  + bin/jaotc
+  + bin/jar
+  + bin/jarsigner
+  + bin/javac
+  + bin/javadoc
+  + bin/javap
+  + bin/jcmd
+  + bin/jconsole
+  + bin/jdb
+  + bin/jdeprscan
+  + bin/jdeps
+  + bin/jhsdb
+  + bin/jimage
+  + bin/jinfo
+  + bin/jjs
+  + bin/jlink
+  + bin/jmap
+  + bin/jmod
+  + bin/jps
+  + bin/jshell
+  + bin/jstack
+  + bin/jstat
+  + bin/jstatd
+  + bin/pack200
+  + bin/rmic
+  + bin/rmid
+  + bin/serialver
+  + bin/unpack200
+  + legal/java.smartcardio
+  + legal/java.smartcardio/ADDITIONAL_LICENSE_INFO
+  + legal/java.smartcardio/ASSEMBLY_EXCEPTION
+  + legal/java.smartcardio/LICENSE
+  + legal/java.smartcardio/pcsclite.md
+  + legal/jdk.aot
+  + legal/jdk.aot/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.aot/ASSEMBLY_EXCEPTION
+  + legal/jdk.aot/LICENSE
+  + legal/jdk.attach
+  + legal/jdk.attach/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.attach/ASSEMBLY_EXCEPTION
+  + legal/jdk.attach/LICENSE
+  + legal/jdk.compiler
+  + legal/jdk.compiler/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.compiler/ASSEMBLY_EXCEPTION
+  + legal/jdk.compiler/LICENSE
+  + legal/jdk.crypto.ec/ecc.md
+  + legal/jdk.editpad
+  + legal/jdk.editpad/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.editpad/ASSEMBLY_EXCEPTION
+  + legal/jdk.editpad/LICENSE
+  + legal/jdk.hotspot.agent
+  + legal/jdk.hotspot.agent/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.hotspot.agent/ASSEMBLY_EXCEPTION
+  + legal/jdk.hotspot.agent/LICENSE
+  + legal/jdk.internal.ed
+  + legal/jdk.internal.ed/ADDITIONAL_LICENSE_INFO
+  + legal/jdk.internal.ed/ASSEMBLY_EXCEPTION
+  + legal/jdk.internal.ed/LICENSE
+  + legal/jdk.internal.jvmstat
+  + legal/jdk.internal.jvmstat/ADDITIONAL_LICENSE_INFO
+  ... 95 more
+
+## size mismatches (ours vs amethyst), first 60
+  ~ bin/java: 7696 vs 7672
+  ~ bin/jfr: 7776 vs 7768
+  ~ conf/logging.properties: 2731 vs 2732
+  ~ conf/management/management.properties: 14292 vs 14410
+  ~ conf/net.properties: 7206 vs 7441
+  ~ conf/security/java.security: 67861 vs 65165
+  ~ legal/java.base/asm.md: 1582 vs 1584
+  ~ legal/java.base/cldr.md: 2926 vs 9130
+  ~ legal/java.base/icu.md: 2930 vs 11086
+  ~ legal/java.base/unicode.md: 2957 vs 2384
+  ~ legal/java.desktop/giflib.md: 1689 vs 1646
+  ~ legal/java.desktop/jpeg.md: 3997 vs 3475
+  ~ legal/java.desktop/lcms.md: 2654 vs 2641
+  ~ legal/java.desktop/libpng.md: 7556 vs 7419
+  ~ legal/java.xml.crypto/santuario.md: 11499 vs 11505
+  ~ legal/java.xml/bcel.md: 11195 vs 11196
+  ~ lib/classlist: 40311 vs 71306
+  ~ lib/jexec: 8520 vs 8696
+  ~ lib/jfr/default.jfc: 30913 vs 35918
+  ~ lib/jfr/profile.jfc: 30871 vs 35871
+  ~ lib/jrt-fs.jar: 106291 vs 110519
+  ~ lib/jspawnhelper: 14056 vs 15072
+  ~ lib/libawt.so: 666904 vs 646968
+  ~ lib/libawt_headless.so: 30288 vs 28184
+  ~ lib/libdt_socket.so: 19384 vs 22480
+  ~ lib/libextnet.so: 7720 vs 8520
+  ~ lib/libfontmanager.so: 1595368 vs 1584160
+  ~ lib/libfreetype.so: 1033608 vs 684944
+  ~ lib/libinstrument.so: 44968 vs 45168
+  ~ lib/libj2gss.so: 39192 vs 38920
+  ~ lib/libj2pkcs11.so: 79968 vs 81160
+  ~ lib/libjaas.so: 5376 vs 5256
+  ~ lib/libjava.so: 168496 vs 153536
+  ~ lib/libjavajpeg.so: 199200 vs 203320
+  ~ lib/libjawt.so: 3848 vs 3576
+  ~ lib/libjdwp.so: 242912 vs 249592
+  ~ lib/libjimage.so: 322968 vs 304488
+  ~ lib/libjsig.so: 7312 vs 7720
+  ~ lib/liblcms.so: 409688 vs 394392
+  ~ lib/libmanagement.so: 17168 vs 16936
+  ~ lib/libmanagement_agent.so: 4720 vs 4448
+  ~ lib/libmanagement_ext.so: 22800 vs 22312
+  ~ lib/libmlib_image.so: 444680 vs 445480
+  ~ lib/libnet.so: 85480 vs 86848
+  ~ lib/libnio.so: 71312 vs 82008
+  ~ lib/libprefs.so: 5544 vs 5272
+  ~ lib/librmi.so: 3952 vs 3680
+  ~ lib/libsctp.so: 22128 vs 21784
+  ~ lib/libverify.so: 57272 vs 52080
+  ~ lib/libzip.so: 30440 vs 30640
+  ~ lib/modules: 143063859 vs 100299533
+  ~ lib/security/blocked.certs: 5608 vs 2488
+  ~ lib/security/cacerts: 119463 vs 122913
+  ~ lib/security/default.policy: 9811 vs 10213
+  ~ lib/security/public_suffix_list.dat: 228598 vs 228507
+  ~ lib/server/libjsig.so: 7312 vs 7720
+  ~ lib/server/libjvm.so: 15231960 vs 17409080
+  ~ lib/tzdb.dat: 103988 vs 102492
+  ~ release: 1277 vs 878
+
+## type mismatches
