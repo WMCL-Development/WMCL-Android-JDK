@@ -111,6 +111,14 @@ if old in s:
     open(p, 'w').write(s.replace(old, new, 1))
 PY
 
+# Apply repo-local fixups after the upstream/ported patch set.
+if [ -d "$ROOT/patches/jre_11/fixups" ]; then
+  for patch in $(ls "$ROOT/patches/jre_11/fixups"/*.diff | sort -V); do
+    echo "Applying fixup $(basename "$patch")"
+    git apply --whitespace=fix "$patch" || { echo "fixup failed: $patch" >&2; exit 1; }
+  done
+fi
+
 echo "==> Preparing toolchain headers"
 ln -sfn /usr/include/X11 "$TOOLCHAIN/sysroot/usr/include/X11"
 ln -sfn /usr/include/alsa "$TOOLCHAIN/sysroot/usr/include/alsa"

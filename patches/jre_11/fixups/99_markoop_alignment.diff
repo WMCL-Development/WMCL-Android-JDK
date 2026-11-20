@@ -1,0 +1,19 @@
+diff --git a/src/hotspot/share/oops/markOop.hpp b/src/hotspot/share/oops/markOop.hpp
+index 649217c88..771385ec4 100644
+--- a/src/hotspot/share/oops/markOop.hpp
++++ b/src/hotspot/share/oops/markOop.hpp
+@@ -104,7 +104,13 @@ class JavaThread;
+ class markOopDesc: public oopDesc {
+  private:
+   // Conversion
+-  uintptr_t value() const { return (uintptr_t) this; }
++  uintptr_t value() const {
++    uintptr_t v = (uintptr_t) this;
++    // The mark pointer carries lock bits in its low bits.  Prevent the
++    // compiler from assuming pointer alignment and folding them away.
++    __asm__ __volatile__("" : "+r"(v));
++    return v;
++  }
+ 
+  public:
+   // Constants
