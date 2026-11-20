@@ -287,36 +287,30 @@ BUILD_DIR="$(find build -maxdepth 1 -type d -name "linux-$TARGET_JDK-*" | head -
 test -d "$BUILD_DIR"
 make -C "$BUILD_DIR" JOBS="$(nproc)" images
 
-echo "==> Creating JRE image"
+echo "==> Picking the full JDK image"
 JDK_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 2 -type d -name jdk | head -n 1)"
-test -d "$JDK_IMAGE"
-if [ "$JDK_MAJOR" = "8" ]; then
-  JRE_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 1 -type d -name 'j2re-image' | head -n 1)"
-  test -d "$JRE_IMAGE"
-else
-  JRE_IMAGE="$WORK/jre-$JDK_MAJOR-image"
-  rm -rf "$JRE_IMAGE"
-  MODULE_PATH="$JDK_IMAGE/jmods"
-  if [ ! -d "$MODULE_PATH" ]; then MODULE_PATH="$BUILD_DIR/jmods"; fi
-  "$JAVA_HOME/bin/jlink"     --module-path "$MODULE_PATH"     --add-modules java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.management.rmi,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.se,java.security.jgss,java.security.sasl,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.accessibility,jdk.charsets,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.dynalink,jdk.httpserver,jdk.jdwp.agent,jdk.jfr,jdk.jsobject,jdk.localedata,jdk.management,jdk.management.agent,jdk.management.jfr,jdk.naming.dns,jdk.naming.rmi,jdk.net,jdk.nio.mapmode,jdk.sctp,jdk.security.auth,jdk.security.jgss,jdk.unsupported,jdk.xml.dom,jdk.zipfs     --output "$JRE_IMAGE"     --no-man-pages     --no-header-files     --release-info="$JDK_IMAGE/release"     --compress=0
+if [ -z "$JDK_IMAGE" ] && [ "$JDK_MAJOR" = "8" ]; then
+  JDK_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 1 -type d -name 'j2sdk-image' | head -n 1)"
 fi
+test -d "$JDK_IMAGE"
 
-# jlink does not copy JDK image extras such as the fontconfig database and
-# bundled Lucida fonts.  java.desktop needs them at runtime (Minecraft's
-# Cacio agent initialises FontConfiguration during premain), so carry them
-# over from the JDK image.
+# The full JDK image already contains everything a launcher expects (javac,
+# jmods, ct.sym, fontconfig database, fonts); ship it as-is.  libc++_shared is
+# still needed because the NDK clang++ links libjvm against it dynamically and
+# the external Android freetype build is not part of the JDK image.
+LIBCXX_SHARED="$(find "$TOOLCHAIN/sysroot/usr/lib/$TARGET" -maxdepth 1 -name 'libc++_shared.so' 2>/dev/null | head -n 1)"
+LIBCXX_DIR="$JDK_IMAGE/lib/aarch64"
+if [ ! -d "$LIBCXX_DIR" ]; then LIBCXX_DIR="$JDK_IMAGE/lib"; fi
+if [ -n "$LIBCXX_SHARED" ] && [ -d "$LIBCXX_DIR" ]; then
+  cp -f "$LIBCXX_SHARED" "$LIBCXX_DIR/"
+fi
 if [ -d "$JDK_IMAGE/lib" ]; then
-  cp -a "$JDK_IMAGE/lib"/fontconfig* "$JRE_IMAGE/lib/" 2>/dev/null || true
-  cp -a "$JDK_IMAGE/lib"/psfont*.properties "$JRE_IMAGE/lib/" 2>/dev/null || true
-  if [ -d "$JDK_IMAGE/lib/fonts" ]; then
-    cp -a "$JDK_IMAGE/lib/fonts" "$JRE_IMAGE/lib/"
+  if [ -f "$FREETYPE_DIR/lib/libfreetype.so" ]; then
+    cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$JDK_IMAGE/lib/"
   fi
 fi
 
-if [ -f "$FREETYPE_DIR/lib/libfreetype.so" ]; then
-  cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$JRE_IMAGE/lib/"
-fi
-
-echo "==> Packing JRE"
-tar cJf "$OUT/jre$JDK_MAJOR-android-$TARGET_SHORT.tar.xz" -C "$JRE_IMAGE" .
+echo "==> Packing JDK image"
+tar cJf "$OUT/jdk$JDK_MAJOR-android-$TARGET_SHORT.tar.xz" -C "$JDK_IMAGE" .
+ls -lh "$OUT"
 ls -lh "$OUT"

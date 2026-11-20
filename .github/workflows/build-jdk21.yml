@@ -2,7 +2,7 @@ name: Build JDK 21 aarch64
 
 on:
   push:
-    branches: [ openjdk-jre21 ]
+    branches: [ openjdk-jdk21 ]
   workflow_dispatch:
 
 jobs:
@@ -28,12 +28,12 @@ jobs:
             libfontconfig1-dev libx11-dev libxext-dev libxrandr-dev \
             libxrender-dev libxt-dev
 
-      - name: Build JDK 21 aarch64 JRE
+      - name: Build JDK 21 aarch64
         run: bash scripts/build-android-jre.sh
 
-      - name: Upload JRE artifact
+      - name: Upload JDK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jre21-android-arm64
-          path: out/jre21-android-arm64.tar.xz
+          name: jdk21-android-arm64
+          path: out/jdk21-android-arm64.tar.xz
           if-no-files-found: error
