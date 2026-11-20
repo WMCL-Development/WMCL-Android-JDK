@@ -5,6 +5,7 @@
 # OpenJDK runtime: GPLv2+CE. Our build tooling: Apache-2.0.
 # Android patches are downloaded at build time from a pinned Amethyst commit.
 set -eo pipefail
+JDK_MAJOR="17"
 
 JDK_VERSION="17.0.21.1"
 JDK_TAG="jdk-$JDK_VERSION-ga"
@@ -147,11 +148,27 @@ echo "==> Configuring OpenJDK $JDK_VERSION for $TARGET"
 bash ./configure   --openjdk-target="$TARGET"   --with-toolchain-type=gcc   --with-extra-cflags="$CFLAGS"   --with-extra-cxxflags="$CXXFLAGS"   --with-extra-ldflags="$LDFLAGS"   --disable-precompiled-headers   --disable-warnings-as-errors   --enable-option-checking=fatal   --enable-headless-only=yes   --with-jvm-variants="$JVM_VARIANTS"   --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc   --with-cups-include="$WORK/cups-$CUPS_VERSION"   --with-devkit="$TOOLCHAIN"   --with-native-debug-symbols=external   --with-debug-level="$JDK_DEBUG_LEVEL"   --with-fontconfig-include="$TOOLCHAIN/sysroot/usr/include"   --x-includes="$TOOLCHAIN/sysroot/usr/include/X11"   --x-libraries=/usr/lib   --with-freetype-include="$FREETYPE_DIR/include/freetype2"   --with-freetype-lib="$FREETYPE_DIR/lib"
 
 echo "==> Building OpenJDK images"
-cd "build/linux-$TARGET_JDK-$JVM_VARIANTS-$JDK_DEBUG_LEVEL"
-make JOBS="$(nproc)" images
+BUILD_DIR="$(find build -maxdepth 1 -type d -name "linux-$TARGET_JDK-*" | head -n 1)"
+test -d "$BUILD_DIR"
+make -C "$BUILD_DIR" JOBS="$(nproc)" images
+
+echo "==> Creating JRE image"
+JDK_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 2 -type d -name jdk | head -n 1)"
+test -d "$JDK_IMAGE"
+if [ "$JDK_MAJOR" = "8" ]; then
+  JRE_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 1 -type d -name 'j2re-image' | head -n 1)"
+  test -d "$JRE_IMAGE"
+else
+  JRE_IMAGE="$WORK/jre-$JDK_MAJOR-image"
+  rm -rf "$JRE_IMAGE"
+  MODULE_PATH="$JDK_IMAGE/jmods"
+  if [ ! -d "$MODULE_PATH" ]; then MODULE_PATH="$BUILD_DIR/jmods"; fi
+  "$JAVA_HOME/bin/jlink"     --module-path "$MODULE_PATH"     --add-modules java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.management.rmi,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.se,java.security.jgss,java.security.sasl,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.accessibility,jdk.charsets,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.dynalink,jdk.httpserver,jdk.jdwp.agent,jdk.jfr,jdk.jsobject,jdk.localedata,jdk.management,jdk.management.agent,jdk.management.jfr,jdk.naming.dns,jdk.naming.rmi,jdk.net,jdk.nio.mapmode,jdk.sctp,jdk.security.auth,jdk.security.jgss,jdk.unsupported,jdk.xml.dom,jdk.zipfs     --output "$JRE_IMAGE"     --no-man-pages     --no-header-files     --release-info="$JDK_IMAGE/release"     --compress=0
+fi
+if [ -f "$FREETYPE_DIR/lib/libfreetype.so" ]; then
+  cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$JRE_IMAGE/lib/"
+fi
 
 echo "==> Packing JRE"
-IMG="$WORK/openjdk/build/linux-$TARGET_JDK-$JVM_VARIANTS-$JDK_DEBUG_LEVEL/images/jdk"
-test -d "$IMG"
-tar cJf "$OUT/jre17-android-$TARGET_SHORT.tar.xz" -C "$IMG" .
+tar cJf "$OUT/jre$JDK_MAJOR-android-$TARGET_SHORT.tar.xz" -C "$JRE_IMAGE" .
 ls -lh "$OUT"
