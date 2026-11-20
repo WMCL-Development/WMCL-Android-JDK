@@ -136,6 +136,13 @@ if 'target >> 48' not in s:
     s = s.replace(old, new)
     open(p, 'w').write(s)
 PY
+# clang assumes markOopDesc* (which inherits oopDesc's 8-byte alignment) is
+# really aligned, so it constant-folds the mark-word bit tests: has_locker()
+# becomes true and has_monitor() false for a neutral mark word, and inflate()
+# dereferences the mark word as a BasicLock pointer. Launder the fake pointer
+# through an asm barrier in value() so the real bits reach the tests.
+sed -i 's|^  uintptr_t value() const { return (uintptr_t) this; }$|  uintptr_t value() const {\n    uintptr_t v = (uintptr_t) this;\n    __asm__ __volatile__("" : "+r"(v));\n    return v;\n  }|' hotspot/src/share/vm/oops/markOop.hpp
+grep -q 'uintptr_t v = (uintptr_t) this;' hotspot/src/share/vm/oops/markOop.hpp || { echo 'markOop value() barrier patch did not apply'; exit 1; }
 # Hotspot defaults to clang PCH, which passes gcc-only -fpch-deps to clang.
 sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
 # USE_CLANG is empty with our gcc-disguised clang, so drop the GCC-only dep flag.
