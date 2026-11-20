@@ -157,6 +157,19 @@ if old in s:
     open(p, 'w').write(s)
 PY
 grep -q '((uint64_t)target >> 32) & 0xffff' hotspot/src/cpu/aarch64/vm/macroAssembler_aarch64.cpp || { echo 'adrp relocation mask patch did not apply'; exit 1; }
+# An arena can be destructed after reset() has already cleared _first (e.g. a
+# compiler thread tearing down twice during VM exit); guard the unconditional
+# _first->chop() so shutdown does not dereference NULL.
+python3 - <<'PY'
+p = 'hotspot/src/share/vm/memory/allocation.cpp'
+s = open(p).read()
+old = '  set_size_in_bytes(0);\n  _first->chop();'
+new = '  if (_first == NULL) {\n    return;\n  }\n  set_size_in_bytes(0);\n  _first->chop();'
+assert s.count(old) == 1, s.count(old)
+s = s.replace(old, new)
+open(p, 'w').write(s)
+PY
+grep -q 'if (_first == NULL)' hotspot/src/share/vm/memory/allocation.cpp || { echo 'Arena destruct_contents guard did not apply'; exit 1; }
 # Hotspot defaults to clang PCH, which passes gcc-only -fpch-deps to clang.
 sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
 # USE_CLANG is empty with our gcc-disguised clang, so drop the GCC-only dep flag.
