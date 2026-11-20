@@ -5,6 +5,7 @@
 # OpenJDK runtime: GPLv2+CE. Our build tooling: Apache-2.0.
 # Android patches are downloaded at build time from a pinned Amethyst commit.
 set -eo pipefail
+JDK_MAJOR="8"
 
 JDK_VERSION="jdk8u514-ga"
 JDK_TAG="jdk8u514-ga"
@@ -145,8 +146,23 @@ BUILD_DIR="$(find build -maxdepth 1 -type d -name "linux-$TARGET_JDK-*" | head -
 test -d "$BUILD_DIR"
 make -C "$BUILD_DIR" JOBS="$(nproc)" images
 
+echo "==> Creating JRE image"
+JDK_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 2 -type d -name jdk | head -n 1)"
+test -d "$JDK_IMAGE"
+if [ "$JDK_MAJOR" = "8" ]; then
+  JRE_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 1 -type d -name 'j2re-image' | head -n 1)"
+  test -d "$JRE_IMAGE"
+else
+  JRE_IMAGE="$WORK/jre-$JDK_MAJOR-image"
+  rm -rf "$JRE_IMAGE"
+  MODULE_PATH="$JDK_IMAGE/jmods"
+  if [ ! -d "$MODULE_PATH" ]; then MODULE_PATH="$BUILD_DIR/jmods"; fi
+  "$JAVA_HOME/bin/jlink"     --module-path "$MODULE_PATH"     --add-modules java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.management.rmi,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.se,java.security.jgss,java.security.sasl,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.accessibility,jdk.charsets,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.dynalink,jdk.httpserver,jdk.jdwp.agent,jdk.jfr,jdk.jsobject,jdk.localedata,jdk.management,jdk.management.agent,jdk.management.jfr,jdk.naming.dns,jdk.naming.rmi,jdk.net,jdk.nio.mapmode,jdk.sctp,jdk.security.auth,jdk.security.jgss,jdk.unsupported,jdk.xml.dom,jdk.zipfs     --output "$JRE_IMAGE"     --no-man-pages     --no-header-files     --release-info="$JDK_IMAGE/release"     --compress=0
+fi
+if [ -f "$FREETYPE_DIR/lib/libfreetype.so" ]; then
+  cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$JRE_IMAGE/lib/"
+fi
+
 echo "==> Packing JRE"
-IMG="$(find "$BUILD_DIR/images" -maxdepth 2 -type d -name jdk | head -n 1)"
-test -d "$IMG"
-tar cJf "$OUT/jre8-android-$TARGET_SHORT.tar.xz" -C "$IMG" .
+tar cJf "$OUT/jre$JDK_MAJOR-android-$TARGET_SHORT.tar.xz" -C "$JRE_IMAGE" .
 ls -lh "$OUT"
