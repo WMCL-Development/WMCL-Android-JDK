@@ -1,0 +1,141 @@
+diff --git a/make/autoconf/build-aux/config.sub b/make/autoconf/build-aux/config.sub
+index 3c280ac7c0..47111c9d8e 100644
+--- a/make/autoconf/build-aux/config.sub
++++ b/make/autoconf/build-aux/config.sub
+@@ -41,7 +41,8 @@ if echo $* | grep pc-msys >/dev/null ; then
+ fi
+ 
+ # First, filter out everything that doesn't begin with "aarch64-"
+-if ! echo $* | grep '^aarch64-' >/dev/null ; then
++# or that ends with "-android"
++if ! echo $* | egrep "^aarch64-|-android" >/dev/null ; then
+     . $DIR/autoconf-config.sub "$@"
+     # autoconf-config.sub exits, so we never reach here, but just in
+     # case we do:
+@@ -52,6 +53,10 @@ while test $# -gt 0 ; do
+     case $1 in
+         -- )   # Stop option processing
+             shift; break ;;
++        *-android* )
++            echo $1
++            exit
++            ;;
+         aarch64-* )
+             config=`echo $1 | sed 's/^aarch64-/arm-/'`
+             sub_args="$sub_args $config"
+diff --git a/make/autoconf/flags-cflags.m4 b/make/autoconf/flags-cflags.m4
+index 3c5ba9ccce..094f79484e 100644
+--- a/make/autoconf/flags-cflags.m4
++++ b/make/autoconf/flags-cflags.m4
+@@ -405,7 +405,8 @@ AC_DEFUN([FLAGS_SETUP_CFLAGS_HELPER],
+   #### OS DEFINES, these should be independent on toolchain
+   if test "x$OPENJDK_TARGET_OS" = xlinux; then
+     CFLAGS_OS_DEF_JVM="-DLINUX"
+-    CFLAGS_OS_DEF_JDK="-D_GNU_SOURCE -D_REENTRANT -D_LARGEFILE64_SOURCE"
++    # CFLAGS_OS_DEF_JDK="-D_GNU_SOURCE -D_REENTRANT -D_LARGEFILE64_SOURCE"
++    CFLAGS_OS_DEF_JDK="-D_GNU_SOURCE -D_REENTRANT -D_LARGEFILE64_SOURCE -D__USE_BSD"
+   elif test "x$OPENJDK_TARGET_OS" = xsolaris; then
+     CFLAGS_OS_DEF_JVM="-DSOLARIS"
+     CFLAGS_OS_DEF_JDK="-D__solaris__"
+diff --git a/make/autoconf/lib-freetype.m4 b/make/autoconf/lib-freetype.m4
+index 99e9ebe547..8b2c797740 100644
+--- a/make/autoconf/lib-freetype.m4
++++ b/make/autoconf/lib-freetype.m4
+@@ -106,7 +106,7 @@ AC_DEFUN_ONCE([LIB_SETUP_FREETYPE],
+   fi
+ 
+   FREETYPE_TO_USE=bundled
+-  if (test "x$OPENJDK_TARGET_OS" != "xwindows" && test "x$OPENJDK_TARGET_OS" != "xmacosx"); then
++  if (test "x$OPENJDK_TARGET_OS" != "xwindows" && test "x$OPENJDK_TARGET_OS" != "xmacosx" && test "x$OPENJDK_TARGET_OS" != "xandroid"); then
+     FREETYPE_TO_USE=system
+   fi
+   if (test "x$with_freetype" != "x"); then
+diff --git a/make/autoconf/libraries.m4 b/make/autoconf/libraries.m4
+index 16e906bdc6..96807bd08b 100644
+--- a/make/autoconf/libraries.m4
++++ b/make/autoconf/libraries.m4
+@@ -40,8 +40,8 @@ m4_include([lib-tests.m4])
+ AC_DEFUN_ONCE([LIB_DETERMINE_DEPENDENCIES],
+ [
+   # Check if X11 is needed
+-  if test "x$OPENJDK_TARGET_OS" = xwindows || test "x$OPENJDK_TARGET_OS" = xmacosx; then
+-    # No X11 support on windows or macosx
++  if test "x$OPENJDK_TARGET_OS" = xwindows || test "x$OPENJDK_TARGET_OS" = xmacosx || test "x$OPENJDK_TARGET_OS" = xandroid; then
++    # No X11 support on windows, macosx or android
+     NEEDS_LIB_X11=false
+   else
+     # All other instances need X11, even if building headless only, libawt still
+@@ -50,8 +50,8 @@ AC_DEFUN_ONCE([LIB_DETERMINE_DEPENDENCIES],
+   fi
+ 
+   # Check if fontconfig is needed
+-  if test "x$OPENJDK_TARGET_OS" = xwindows || test "x$OPENJDK_TARGET_OS" = xmacosx; then
+-    # No fontconfig support on windows or macosx
++  if test "x$OPENJDK_TARGET_OS" = xwindows || test "x$OPENJDK_TARGET_OS" = xmacosx || test "x$OPENJDK_TARGET_OS" = xandroid; then
++    # No fontconfig support on windows, macosx or android
+     NEEDS_LIB_FONTCONFIG=false
+   else
+     # All other instances need fontconfig, even if building headless only,
+diff --git a/make/autoconf/platform.m4 b/make/autoconf/platform.m4
+index 5d1d9efa39..501dfadafd 100644
+--- a/make/autoconf/platform.m4
++++ b/make/autoconf/platform.m4
+@@ -178,6 +178,10 @@ AC_DEFUN([PLATFORM_EXTRACT_VARS_FROM_OS],
+       VAR_OS=linux
+       VAR_OS_TYPE=unix
+       ;;
++    *android*)
++      VAR_OS=linux
++      VAR_OS_TYPE=unix
++      ;;
+     *solaris*)
+       VAR_OS=solaris
+       VAR_OS_TYPE=unix
+diff --git a/make/autoconf/toolchain.m4 b/make/autoconf/toolchain.m4
+index 1bba0eb88e..2dad629047 100644
+--- a/make/autoconf/toolchain.m4
++++ b/make/autoconf/toolchain.m4
+@@ -35,10 +35,10 @@
+ m4_include([toolchain_microsoft.m4])
+ 
+ # All valid toolchains, regardless of platform (used by help.m4)
+-VALID_TOOLCHAINS_all="gcc clang solstudio xlc microsoft"
++VALID_TOOLCHAINS_all="clang gcc solstudio xlc microsoft"
+ 
+ # These toolchains are valid on different platforms
+-VALID_TOOLCHAINS_linux="gcc clang"
++VALID_TOOLCHAINS_linux="clang gcc"
+ VALID_TOOLCHAINS_solaris="solstudio"
+ VALID_TOOLCHAINS_macosx="gcc clang"
+ VALID_TOOLCHAINS_aix="xlc"
+@@ -963,8 +963,8 @@ AC_DEFUN_ONCE([TOOLCHAIN_SETUP_BUILD_COMPILERS],
+         UTIL_REQUIRE_PROGS(BUILD_CC, clang cc gcc)
+         UTIL_REQUIRE_PROGS(BUILD_CXX, clang++ CC g++)
+       else
+-        UTIL_REQUIRE_PROGS(BUILD_CC, cc gcc)
+-        UTIL_REQUIRE_PROGS(BUILD_CXX, CC g++)
++        UTIL_REQUIRE_PROGS(BUILD_CC, clang cc gcc)
++        UTIL_REQUIRE_PROGS(BUILD_CXX, clang++ CC g++)
+       fi
+       UTIL_LOOKUP_PROGS(BUILD_NM, nm gcc-nm)
+       UTIL_LOOKUP_PROGS(BUILD_AR, ar gcc-ar lib)
+@@ -979,11 +979,14 @@ AC_DEFUN_ONCE([TOOLCHAIN_SETUP_BUILD_COMPILERS],
+ 
+     PATH="$OLDPATH"
+ 
+-    TOOLCHAIN_EXTRACT_COMPILER_VERSION(BUILD_CC, [BuildC])
+-    TOOLCHAIN_EXTRACT_COMPILER_VERSION(BUILD_CXX, [BuildC++])
+-    TOOLCHAIN_PREPARE_FOR_VERSION_COMPARISONS([BUILD_], [OPENJDK_BUILD_])
+-    TOOLCHAIN_EXTRACT_LD_VERSION(BUILD_LD, [build linker])
+-    TOOLCHAIN_PREPARE_FOR_LD_VERSION_COMPARISONS([BUILD_], [OPENJDK_BUILD_])
++    # xandroid
++    if test "x$OPENJDK_BUILD_OS" != "xlinux"; then
++      TOOLCHAIN_EXTRACT_COMPILER_VERSION(BUILD_CC, [BuildC])
++      TOOLCHAIN_EXTRACT_COMPILER_VERSION(BUILD_CXX, [BuildC++])
++      TOOLCHAIN_PREPARE_FOR_VERSION_COMPARISONS([BUILD_], [OPENJDK_BUILD_], [build ])
++      TOOLCHAIN_EXTRACT_LD_VERSION(BUILD_LD, [build linker])
++      TOOLCHAIN_PREPARE_FOR_LD_VERSION_COMPARISONS([BUILD_], [OPENJDK_BUILD_])
++    fi
+   else
+     # If we are not cross compiling, use the normal target compilers for
+     # building the build platform executables.

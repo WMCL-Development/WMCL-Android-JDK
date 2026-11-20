@@ -1,0 +1,218 @@
+diff --git a/make/common/JdkNativeCompilation.gmk b/make/common/JdkNativeCompilation.gmk
+index b86df0f8ba..9958293663 100644
+--- a/make/common/JdkNativeCompilation.gmk
++++ b/make/common/JdkNativeCompilation.gmk
+@@ -41,6 +41,12 @@ FindSrcDirsForLib += \
+       $(TOPDIR)/src/$(strip $1)/$(OPENJDK_TARGET_OS_TYPE)/native/lib$(strip $2) \
+       $(TOPDIR)/src/$(strip $1)/share/native/lib$(strip $2)))
+ 
++ifeq ($(OPENJDK_TARGET_OS), android)
++  FindSrcDirsForLib += \
++    $(call uniq, $(wildcard \
++        $(TOPDIR)/src/$(strip $1)/linux/native/lib$(strip $2)))
++endif
++
+ FindSrcDirsForComponent += \
+   $(call uniq, $(wildcard \
+       $(TOPDIR)/src/$(strip $1)/$(OPENJDK_TARGET_OS)/native/$(strip $2) \
+diff --git a/make/common/Modules.gmk b/make/common/Modules.gmk
+index 95dc2d55b6..2aea785a8d 100644
+--- a/make/common/Modules.gmk
++++ b/make/common/Modules.gmk
+@@ -241,6 +241,10 @@ TOP_SRC_DIRS += \
+     $(TOPDIR)/src \
+     #
+ 
++ifeq ($(OPENJDK_TARGET_OS), android)
++  SRC_SUBDIRS += linux/classes
++endif
++
+ SRC_SUBDIRS += $(OPENJDK_TARGET_OS)/classes
+ ifneq ($(OPENJDK_TARGET_OS), $(OPENJDK_TARGET_OS_TYPE))
+   SRC_SUBDIRS += $(OPENJDK_TARGET_OS_TYPE)/classes
+diff --git a/make/common/Utils.gmk b/make/common/Utils.gmk
+index acb6a30313..b399556b1f 100644
+--- a/make/common/Utils.gmk
++++ b/make/common/Utils.gmk
+@@ -299,6 +299,12 @@ check-jvm-variant = \
+ isTargetOs = \
+   $(strip $(if $(filter $(OPENJDK_TARGET_OS), $1), true, false))
+ 
++ifeq ($(call isTargetOs, android), true)
++  # PATCH: Since Android is Linux, so Linux specific things are also built for Android.
++  isTargetOs = \
++    $(strip $(if $(filter $(OPENJDK_TARGET_OS), $1), true, $(if $(filter linux, $1), true, false)))
++endif
++
+ isTargetOsType = \
+   $(strip $(if $(filter $(OPENJDK_TARGET_OS_TYPE), $1), true, false))
+ 
+diff --git a/make/hotspot/lib/JvmMapfile.gmk b/make/hotspot/lib/JvmMapfile.gmk
+index ba44e57983..6c5b02343f 100644
+--- a/make/hotspot/lib/JvmMapfile.gmk
++++ b/make/hotspot/lib/JvmMapfile.gmk
+@@ -64,7 +64,7 @@ endif
+ # Create a dynamic list of symbols from the built object files. This is highly
+ # platform dependent.
+ 
+-ifeq ($(call isTargetOs, linux), true)
++ifeq ($(call isTargetOs, android linux), true)
+   DUMP_SYMBOLS_CMD := $(NM) --defined-only *.o
+   ifneq ($(FILTER_SYMBOLS_PATTERN), )
+     FILTER_SYMBOLS_PATTERN := $(FILTER_SYMBOLS_PATTERN)|
+diff --git a/make/hotspot/lib/JvmOverrideFiles.gmk b/make/hotspot/lib/JvmOverrideFiles.gmk
+index ed961352e1..1160e595d3 100644
+--- a/make/hotspot/lib/JvmOverrideFiles.gmk
++++ b/make/hotspot/lib/JvmOverrideFiles.gmk
+@@ -31,8 +31,6 @@ $(eval $(call IncludeCustomExtension, hotspot/lib/JvmOverrideFiles.gmk))
+ 
+ ifeq ($(TOOLCHAIN_TYPE), gcc)
+   BUILD_LIBJVM_vmStructs.cpp_CXXFLAGS := -fno-var-tracking-assignments
+-  BUILD_LIBJVM_jvmciCompilerToVM.cpp_CXXFLAGS := -fno-var-tracking-assignments
+-  BUILD_LIBJVM_jvmciCompilerToVMInit.cpp_CXXFLAGS := -fno-var-tracking-assignments
+   BUILD_LIBJVM_assembler_x86.cpp_CXXFLAGS := -Wno-maybe-uninitialized
+   BUILD_LIBJVM_cardTableBarrierSetAssembler_x86.cpp_CXXFLAGS := -Wno-maybe-uninitialized
+   BUILD_LIBJVM_interp_masm_x86.cpp_CXXFLAGS := -Wno-uninitialized
+@@ -64,7 +62,8 @@ ifeq ($(call isTargetOs, linux), true)
+ 	#
+   endif
+ 
+-  ifeq ($(call isTargetCpu, x86), true)
++  #ifeq ($(call isTargetCpu, x86), true)
++  ifeq (false, true)
+     # Performance measurements show that by compiling GC related code, we could
+     # significantly reduce the GC pause time on 32 bit Linux/Unix platforms by
+     # compiling without the PIC flag (-fPIC on linux).
+diff --git a/make/lib/Awt2dLibraries.gmk b/make/lib/Awt2dLibraries.gmk
+index 73bb932519..a08814d823 100644
+--- a/make/lib/Awt2dLibraries.gmk
++++ b/make/lib/Awt2dLibraries.gmk
+@@ -663,7 +663,7 @@ $(eval $(call SetupJdkLibrary, BUILD_LIBFONTMANAGER, \
+     LDFLAGS_unix := -L$(INSTALL_LIBRARIES_HERE), \
+     LDFLAGS_aix := -Wl$(COMMA)-berok, \
+     LIBS := $(BUILD_LIBFONTMANAGER_FONTLIB), \
+-    LIBS_unix := -lawt -ljava -ljvm $(LIBM) $(LIBCXX), \
++    LIBS_unix := -lawt -lawt_headless -ljava -ljvm $(LIBM) $(LIBCXX), \
+     LIBS_macosx := -lawt_lwawt -framework CoreText -framework CoreFoundation -framework CoreGraphics, \
+     LIBS_windows := $(WIN_JAVA_LIB) advapi32.lib user32.lib gdi32.lib \
+         $(WIN_AWT_LIB), \
+@@ -906,7 +906,7 @@ ifeq ($(ENABLE_HEADLESS_ONLY), false)
+       LIBS_aix := -liconv, \
+   ))
+ 
+-  TARGETS += $(BUILD_LIBSPLASHSCREEN)
++  # TARGETS += $(BUILD_LIBSPLASHSCREEN)
+ 
+   ifeq ($(call isTargetOs, macosx), true)
+     $(BUILD_LIBSPLASHSCREEN): $(call FindLib, $(MODULE), osxapp)
+diff --git a/make/lib/CoreLibraries.gmk b/make/lib/CoreLibraries.gmk
+index 6b6b5cca7f..38b32bfdf9 100644
+--- a/make/lib/CoreLibraries.gmk
++++ b/make/lib/CoreLibraries.gmk
+@@ -126,6 +126,10 @@ $(eval $(call SetupJdkLibrary, BUILD_LIBJAVA, \
+ 
+ TARGETS += $(BUILD_LIBJAVA)
+ 
++ifeq ($(OPENJDK_TARGET_OS), linux)
++  $(BUILD_LIBJAVA): $(BUILD_LIBTINYICONV)
++endif
++
+ $(BUILD_LIBJAVA): $(BUILD_LIBVERIFY)
+ 
+ $(BUILD_LIBJAVA): $(BUILD_LIBFDLIBM)
+diff --git a/make/lib/Lib-java.desktop.gmk b/make/lib/Lib-java.desktop.gmk
+index 25c328689f..4fb3b8c1a6 100644
+--- a/make/lib/Lib-java.desktop.gmk
++++ b/make/lib/Lib-java.desktop.gmk
+@@ -78,7 +78,7 @@ ifeq ($(call isTargetOs, aix), false)
+ 
+   $(BUILD_LIBJSOUND): $(call FindLib, java.base, java)
+ 
+-  TARGETS += $(BUILD_LIBJSOUND)
++  # TARGETS += $(BUILD_LIBJSOUND)
+ 
+ endif
+ 
+diff --git a/make/lib/Lib-java.instrument.gmk b/make/lib/Lib-java.instrument.gmk
+index d5e0400e74..466bf4aaff 100644
+--- a/make/lib/Lib-java.instrument.gmk
++++ b/make/lib/Lib-java.instrument.gmk
+@@ -39,9 +39,11 @@ endif
+ $(eval $(call SetupJdkLibrary, BUILD_LIBINSTRUMENT, \
+     NAME := instrument, \
+     OPTIMIZATION := LOW, \
++    EXTRA_SRC := java.base:libtinyiconv, \
+     CFLAGS := $(CFLAGS_JDKLIB) $(LIBINSTRUMENT_CFLAGS), \
+     CFLAGS_debug := -DJPLIS_LOGGING, \
+     CFLAGS_release := -DNO_JPLIS_LOGGING, \
++    CXXFLAGS := $(CXXFLAGS_JDKLIB), \
+     EXTRA_HEADER_DIRS := java.base:libjli, \
+     LDFLAGS := $(LDFLAGS_JDKLIB) \
+         $(call SET_SHARED_LIBRARY_ORIGIN) \
+diff --git a/make/lib/Lib-jdk.crypto.ec.gmk b/make/lib/Lib-jdk.crypto.ec.gmk
+index dfecc1d3cb..516dddfb8b 100644
+--- a/make/lib/Lib-jdk.crypto.ec.gmk
++++ b/make/lib/Lib-jdk.crypto.ec.gmk
+@@ -47,7 +47,7 @@ ifeq ($(ENABLE_INTREE_EC), true)
+       CXXFLAGS := $(BUILD_LIBSUNEC_CXXFLAGS_JDKLIB), \
+       DISABLED_WARNINGS_gcc := sign-compare implicit-fallthrough, \
+       DISABLED_WARNINGS_microsoft := 4101 4244 4146 4018, \
+-      LDFLAGS := $(LDFLAGS_JDKLIB) $(LDFLAGS_CXX_JDK), \
++      LDFLAGS := -ldl $(LDFLAGS_JDKLIB) $(LDFLAGS_CXX_JDK), \
+       LDFLAGS_macosx := $(call SET_SHARED_LIBRARY_ORIGIN), \
+       LIBS := $(LIBCXX), \
+   ))
+diff --git a/make/lib/Lib-jdk.hotspot.agent.gmk b/make/lib/Lib-jdk.hotspot.agent.gmk
+index 07bd7d7427..813bf22abb 100644
+--- a/make/lib/Lib-jdk.hotspot.agent.gmk
++++ b/make/lib/Lib-jdk.hotspot.agent.gmk
+@@ -72,6 +72,6 @@ $(eval $(call SetupJdkLibrary, BUILD_LIBSA, \
+     LIBS_windows := dbgeng.lib, \
+ ))
+ 
+-TARGETS += $(BUILD_LIBSA)
++# TARGETS += $(BUILD_LIBSA)
+ 
+ ################################################################################
+diff --git a/make/lib/Lib-jdk.jdwp.agent.gmk b/make/lib/Lib-jdk.jdwp.agent.gmk
+index f00f0760fb..23af58ca5d 100644
+--- a/make/lib/Lib-jdk.jdwp.agent.gmk
++++ b/make/lib/Lib-jdk.jdwp.agent.gmk
+@@ -54,9 +54,11 @@ $(eval $(call SetupJdkLibrary, BUILD_LIBJDWP, \
+     NAME := jdwp, \
+     OPTIMIZATION := LOW, \
+     CFLAGS := $(CFLAGS_JDKLIB) -DJDWP_LOGGING, \
++    CXXFLAGS := $(CXXFLAGS_JDKLIB), \
+     EXTRA_HEADER_DIRS := \
+       include \
+       libjdwp/export, \
++    EXTRA_SRC := java.base:libtinyiconv, \
+     LDFLAGS := $(LDFLAGS_JDKLIB) \
+         $(call SET_SHARED_LIBRARY_ORIGIN), \
+     LIBS := $(JDKLIB_LIBS), \
+diff --git a/make/lib/Lib-jdk.net.gmk b/make/lib/Lib-jdk.net.gmk
+index 7e82801895..26700aef48 100644
+--- a/make/lib/Lib-jdk.net.gmk
++++ b/make/lib/Lib-jdk.net.gmk
+@@ -27,7 +27,7 @@ include LibCommon.gmk
+ 
+ ################################################################################
+ 
+-ifeq ($(call isTargetOs, solaris linux macosx), true)
++ifeq ($(call isTargetOs, solaris linux macosx android), true)
+ 
+   $(eval $(call SetupJdkLibrary, BUILD_LIBEXTNET, \
+       NAME := extnet, \
+diff --git a/make/lib/Lib-jdk.pack.gmk b/make/lib/Lib-jdk.pack.gmk
+index f401e03e7c..110bdb18bf 100644
+--- a/make/lib/Lib-jdk.pack.gmk
++++ b/make/lib/Lib-jdk.pack.gmk
+@@ -37,7 +37,7 @@ $(eval $(call SetupJdkLibrary, BUILD_LIBUNPACK, \
+     CFLAGS_release := -DPRODUCT, \
+     EXTRA_HEADER_DIRS := $(call GetJavaHeaderDir, java.base), \
+     DISABLED_WARNINGS_gcc := implicit-fallthrough, \
+-    LDFLAGS := $(LDFLAGS_JDKLIB) $(LDFLAGS_CXX_JDK) \
++    LDFLAGS := -ldl $(LDFLAGS_JDKLIB) $(LDFLAGS_CXX_JDK) \
+         $(call SET_SHARED_LIBRARY_ORIGIN), \
+     LDFLAGS_windows := -map:$(SUPPORT_OUTPUTDIR)/native/$(MODULE)/unpack.map -debug, \
+     LIBS_unix := -ljvm $(LIBCXX) -ljava, \

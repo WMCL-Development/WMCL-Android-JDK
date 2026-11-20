@@ -1,0 +1,1108 @@
+diff --git a/src/hotspot/cpu/arm/icache_arm.cpp b/src/hotspot/cpu/arm/icache_arm.cpp
+index ae163619fd..a3be3f9997 100644
+--- a/src/hotspot/cpu/arm/icache_arm.cpp
++++ b/src/hotspot/cpu/arm/icache_arm.cpp
+@@ -67,7 +67,7 @@ static int icache_flush(address addr, int lines, int magic) {
+ #else
+ 
+ static int icache_flush(address addr, int lines, int magic) {
+-  __builtin___clear_cache(addr, addr + (lines << ICache::log2_line_size));
++  __builtin___clear_cache((char*) addr, (char*) (addr + (lines << ICache::log2_line_size)));
+   return magic;
+ }
+ 
+diff --git a/src/hotspot/os/linux/os_linux.cpp b/src/hotspot/os/linux/os_linux.cpp
+index 0af357ea56..f53da3ca20 100644
+--- a/src/hotspot/os/linux/os_linux.cpp
++++ b/src/hotspot/os/linux/os_linux.cpp
+@@ -133,7 +133,7 @@
+ // for timer info max values which include all bits
+ #define ALL_64_BITS CONST64(0xFFFFFFFFFFFFFFFF)
+ 
+-#ifdef MUSL_LIBC
++#if defined(MUSL_LIBC) || defined(__ANDROID__)
+ // dlvsym is not a part of POSIX
+ // and musl libc doesn't implement it.
+ static void *dlvsym(void *handle,
+@@ -185,6 +185,8 @@ static int clock_tics_per_sec = 100;
+ // avoid this
+ static bool suppress_primordial_thread_resolution = false;
+ 
++static bool read_so_path_from_maps(const char* so_name, char* buf, int buflen);
++
+ // For diagnostics to print a message once. see run_periodic_checks
+ static sigset_t check_signal_done;
+ static bool check_signals = true;
+@@ -332,11 +334,11 @@ bool os::have_special_privileges() {
+ 
+ 
+ #ifndef SYS_gettid
+-// i386: 224, ia64: 1105, amd64: 186, sparc 143
++// i386 & arm: 224, ia64: 1105, amd64: 186, sparc: 143, aarch64: 178
+   #ifdef __ia64__
+     #define SYS_gettid 1105
+   #else
+-    #ifdef __i386__
++    #if defined(__i386__) || defined(__arm__)
+       #define SYS_gettid 224
+     #else
+       #ifdef __amd64__
+@@ -344,6 +346,8 @@ bool os::have_special_privileges() {
+       #else
+         #ifdef __sparc__
+           #define SYS_gettid 143
++        #elif defined(__arm64__) || defined(__aarch64__)
++          #define SYS_gettid 178
+         #else
+           #error define gettid for the arch
+         #endif
+@@ -623,6 +627,7 @@ void os::Linux::hotspot_sigmask(Thread* thread) {
+ // detecting pthread library
+ 
+ void os::Linux::libpthread_init() {
++#ifndef __ANDROID__
+   // Save glibc and pthread version strings.
+ #if !defined(_CS_GNU_LIBC_VERSION) || \
+     !defined(_CS_GNU_LIBPTHREAD_VERSION)
+@@ -647,6 +652,9 @@ void os::Linux::libpthread_init() {
+   confstr(_CS_GNU_LIBPTHREAD_VERSION, str, n);
+   os::Linux::set_libpthread_version(str);
+ #endif
++#else
++  os::Linux::set_libpthread_version("NPTL");
++#endif
+ }
+ 
+ /////////////////////////////////////////////////////////////////////////////
+@@ -1469,9 +1477,9 @@ void os::javaTimeSystemUTC(jlong &seconds, jlong &nanos) {
+ void os::Linux::clock_init() {
+   // we do dlopen's in this particular order due to bug in linux
+   // dynamical loader (see 6348968) leading to crash on exit
+-  void* handle = dlopen("librt.so.1", RTLD_LAZY);
++  void* handle = dlopen("libc.so.6", RTLD_LAZY);
+   if (handle == NULL) {
+-    handle = dlopen("librt.so", RTLD_LAZY);
++    handle = dlopen("libc.so", RTLD_LAZY);
+   }
+ 
+   if (handle) {
+@@ -1695,7 +1703,13 @@ const char* os::dll_file_extension() { return ".so"; }
+ 
+ // This must be hard coded because it's the system's temporary
+ // directory not the java application's temp directory, ala java.io.tmpdir.
+-const char* os::get_temp_directory() { return "/tmp"; }
++const char* os::get_temp_directory() {
++#ifndef __ANDROID__
++  return "/tmp";
++#else
++  return "/data/tmp";
++#endif
++}
+ 
+ static bool file_exists(const char* filename) {
+   struct stat statbuf;
+@@ -1838,6 +1852,30 @@ bool os::dll_address_to_library_name(address addr, char* buf,
+   return false;
+ }
+ 
++static bool read_so_path_from_maps(const char* so_name, char* buf, int buflen) {
++  FILE *fp = fopen("/proc/self/maps", "r");
++  assert(fp, "Failed to open /proc/self/maps");
++  if (!fp) {
++    return false;
++  }
++
++  char maps_buffer[2048];
++  while (fgets(maps_buffer, 2048, fp) != NULL) {
++    if (strstr(maps_buffer, so_name) == NULL) {
++      continue;
++    }
++
++    char *so_path = strchr(maps_buffer, '/');
++    so_path[strlen(so_path) - 1] = '\0'; // Cut trailing \n
++    jio_snprintf(buf, buflen, "%s", so_path);
++    fclose(fp);
++    return true;
++  }
++
++  fclose(fp);
++  return false;
++}
++
+ // Loads .dll/.so and
+ // in case of error it checks if .dll/.so was built for the
+ // same architecture as Hotspot is running on
+@@ -2891,6 +2929,19 @@ void os::jvm_path(char *buf, jint buflen) {
+                                          CAST_FROM_FN_PTR(address, os::jvm_path),
+                                          dli_fname, sizeof(dli_fname), NULL);
+   assert(ret, "cannot locate libjvm");
++#ifdef __ANDROID__
++  if (dli_fname[0] == '\0') {
++    return;
++  }
++
++  if (strchr(dli_fname, '/') == NULL) {
++    bool ok = read_so_path_from_maps(dli_fname, buf, buflen);
++    assert(ok, "unable to turn relative libjvm.so path into absolute");
++    return;
++  }
++
++  snprintf(buf, buflen, /* "%s/lib/%s/server/%s", java_home_var, cpu_arch, */ "%s", dli_fname);
++#else // !__ANDROID__
+   char *rp = NULL;
+   if (ret && dli_fname[0] != '\0') {
+     rp = os::Posix::realpath(dli_fname, buf, buflen);
+@@ -2956,6 +3007,7 @@ void os::jvm_path(char *buf, jint buflen) {
+       }
+     }
+   }
++#endif
+ 
+   strncpy(saved_jvm_path, buf, MAXPATHLEN);
+   saved_jvm_path[MAXPATHLEN - 1] = '\0';
+@@ -3409,7 +3461,8 @@ void os::Linux::sched_getcpu_init() {
+   }
+ 
+   if (sched_getcpu() == -1) {
+-    vm_exit_during_initialization("getcpu(2) system call not supported by kernel");
++    // vm_exit_during_initialization
++    warning("getcpu(2) system call not supported by kernel");
+   }
+ }
+ 
+@@ -4178,6 +4231,8 @@ void os::large_page_init() {
+   #define SHM_HUGETLB 04000
+ #endif
+ 
++#ifndef __ANDROID__
++
+ #define shm_warning_format(format, ...)              \
+   do {                                               \
+     if (UseLargePages &&                             \
+@@ -4270,8 +4325,11 @@ static char* shmat_large_pages(int shmid, size_t bytes, size_t alignment, char*
+   }
+ }
+ 
++#endif // !__ANDROID__
++
+ char* os::Linux::reserve_memory_special_shm(size_t bytes, size_t alignment,
+                                             char* req_addr, bool exec) {
++#ifndef __ANDROID__
+   // "exec" is passed in but not used.  Creating the shared image for
+   // the code cache doesn't have an SHM_X executable permission to check.
+   assert(UseLargePages && UseSHM, "only for SHM large pages");
+@@ -4314,6 +4372,10 @@ char* os::Linux::reserve_memory_special_shm(size_t bytes, size_t alignment,
+   shmctl(shmid, IPC_RMID, NULL);
+ 
+   return addr;
++#else
++  assert(0, "SHM not supported on this platform");
++  return NULL;
++#endif // !__ANDROID__
+ }
+ 
+ static void warn_on_large_pages_failure(char* req_addr, size_t bytes,
+@@ -4487,8 +4549,13 @@ char* os::reserve_memory_special(size_t bytes, size_t alignment,
+ }
+ 
+ bool os::Linux::release_memory_special_shm(char* base, size_t bytes) {
++#ifndef __ANDROID__
+   // detaching the SHM segment will also delete it, see reserve_memory_special_shm()
+   return shmdt(base) == 0;
++#else
++  assert(0, "SHM not supported on this platform");
++  return false;
++#endif // SUPPORTS_SHM
+ }
+ 
+ bool os::Linux::release_memory_special_huge_tlbfs(char* base, size_t bytes) {
+@@ -6288,7 +6355,46 @@ bool os::is_thread_cpu_time_supported() {
+ // Linux doesn't yet have a (official) notion of processor sets,
+ // so just return the system wide load average.
+ int os::loadavg(double loadavg[], int nelem) {
++#ifndef __ANDROID__
+   return ::getloadavg(loadavg, nelem);
++#else
++/*
++ * Copyright (C) 2018 The Android Open Source Project
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *  * Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ *  * Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in
++ *    the documentation and/or other materials provided with the
++ *    distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
++ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
++ * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
++ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
++ * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
++ * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
++ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++  if (nelem < 0) return -1;
++  if (nelem > 3) nelem = 3;
++  struct sysinfo si;
++  if (sysinfo(&si) == -1) return -1;
++  for (int i = 0; i < nelem; ++i) {
++    loadavg[i] = static_cast<double>(si.loads[i]) / static_cast<double>(1 << SI_LOAD_SHIFT);
++  }
++  return nelem;
++#endif
+ }
+ 
+ void os::pause() {
+diff --git a/src/hotspot/os/linux/os_perf_linux.cpp b/src/hotspot/os/linux/os_perf_linux.cpp
+index 83dc3c9e92..bdab9afe03 100644
+--- a/src/hotspot/os/linux/os_perf_linux.cpp
++++ b/src/hotspot/os/linux/os_perf_linux.cpp
+@@ -45,9 +45,312 @@
+ #include <dlfcn.h>
+ #include <pthread.h>
+ #include <limits.h>
++#ifndef __ANDROID__
+ #include <ifaddrs.h>
++#else
++#include <sys/cdefs.h>
++#include <netinet/in.h>
++#include <sys/socket.h>
++#include <linux/if_packet.h>
++#include <linux/netlink.h>
++#include <linux/rtnetlink.h>
++#include <net/if.h>
++#include <stdint.h>
++#endif
+ #include <fcntl.h>
+ 
++#ifdef __ANDROID__
++/*
++ * Copyright (C) 2015 The Android Open Source Project
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *  * Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ *  * Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in
++ *    the documentation and/or other materials provided with the
++ *    distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
++ * FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
++ * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
++ * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
++ * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
++ * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
++ * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++__BEGIN_DECLS
++
++/**
++ * Returned by getifaddrs() and freed by freeifaddrs().
++ */
++struct ifaddrs {
++  /** Pointer to the next element in the linked list. */
++  struct ifaddrs* ifa_next;
++
++  /** Interface name. */
++  char* ifa_name;
++
++  /** Interface flags (like `SIOCGIFFLAGS`). */
++  unsigned int ifa_flags;
++
++  /** Interface address. */
++  struct sockaddr* ifa_addr;
++
++  /** Interface netmask. */
++  struct sockaddr* ifa_netmask;
++
++  union {
++    /** Interface broadcast address (if IFF_BROADCAST is set). */
++    struct sockaddr* ifu_broadaddr;
++
++    /** Interface destination address (if IFF_POINTOPOINT is set). */
++    struct sockaddr* ifu_dstaddr;
++  } ifa_ifu;
++
++  /** Unused. */
++  void* ifa_data;
++};
++
++/** Synonym for `ifa_ifu.ifu_broadaddr` in `struct ifaddrs`. */
++#define ifa_broadaddr ifa_ifu.ifu_broadaddr
++
++/** Synonym for `ifa_ifu.ifu_dstaddr` in `struct ifaddrs`. */
++#define ifa_dstaddr ifa_ifu.ifu_dstaddr
++
++/**
++ * [getifaddrs(3)](http://man7.org/linux/man-pages/man3/getifaddrs.3.html) creates a linked list
++ * of `struct ifaddrs`. The list must be freed by freeifaddrs().
++ *
++ * Returns 0 and stores the list in `*__list_ptr` on success,
++ * and returns -1 and sets `errno` on failure.
++ *
++ * Available since API level 24.
++ */
++int getifaddrs(struct ifaddrs** __list_ptr); // __INTRODUCED_IN(24);
++
++/**
++ * [freeifaddrs(3)](http://man7.org/linux/man-pages/man3/freeifaddrs.3.html) frees a linked list
++ * of `struct ifaddrs` returned by getifaddrs().
++ *
++ * Available since API level 24.
++ */
++void freeifaddrs(struct ifaddrs* __ptr); // __INTRODUCED_IN(24);
++
++__END_DECLS
++
++#define nullptr 0
++
++// The public ifaddrs struct is full of pointers. Rather than track several
++// different allocations, we use a maximally-sized structure with the public
++// part at offset 0, and pointers into its hidden tail.
++struct ifaddrs_storage {
++  // Must come first, so that `ifaddrs_storage` is-a `ifaddrs`.
++  ifaddrs ifa;
++  // The interface index, so we can match RTM_NEWADDR messages with
++  // earlier RTM_NEWLINK messages (to copy the interface flags).
++  int interface_index;
++  // Storage for the pointers in `ifa`.
++  sockaddr_storage addr;
++  sockaddr_storage netmask;
++  sockaddr_storage ifa_ifu;
++  char name[IFNAMSIZ + 1];
++  // Netlink gives us the address family in the header, and the
++  // sockaddr_in or sockaddr_in6 bytes as the payload. We need to
++  // stitch the two bits together into the sockaddr that's part of
++  // our portable interface.
++  void SetAddress(int family, const void* data, size_t byteCount) {
++      addr.ss_family = family;
++      memcpy(SockaddrBytes(family, &addr), data, byteCount);
++      ifa.ifa_addr = reinterpret_cast<sockaddr*>(&addr);
++  }
++  void SetBroadcastAddress(int family, const void* data, size_t byteCount) {
++      ifa_ifu.ss_family = family;
++      memcpy(SockaddrBytes(family, &ifa_ifu), data, byteCount);
++      ifa.ifa_dstaddr = reinterpret_cast<sockaddr*>(&ifa_ifu);
++  }
++  // Netlink gives us the prefix length as a bit count. We need to turn
++  // that into a BSD-compatible netmask represented by a sockaddr*.
++  void SetNetmask(int family, size_t prefix_length) {
++      // ...and work out the netmask from the prefix length.
++      netmask.ss_family = family;
++      uint8_t* dst = SockaddrBytes(family, &netmask);
++      memset(dst, 0xff, prefix_length / 8);
++      if ((prefix_length % 8) != 0) {
++        dst[prefix_length/8] = (0xff << (8 - (prefix_length % 8)));
++      }
++      ifa.ifa_netmask = reinterpret_cast<sockaddr*>(&netmask);
++  }
++  void SetPacketAttributes(int ifindex, unsigned short hatype, unsigned char halen) {
++    sockaddr_ll* sll = reinterpret_cast<sockaddr_ll*>(&addr);
++    sll->sll_ifindex = ifindex;
++    sll->sll_hatype = hatype;
++    sll->sll_halen = halen;
++  }
++ private:
++  // Returns a pointer to the first byte in the address data (which is
++  // stored in network byte order).
++  uint8_t* SockaddrBytes(int family, sockaddr_storage* ss) {
++    if (family == AF_INET) {
++      sockaddr_in* ss4 = reinterpret_cast<sockaddr_in*>(ss);
++      return reinterpret_cast<uint8_t*>(&ss4->sin_addr);
++    } else if (family == AF_INET6) {
++      sockaddr_in6* ss6 = reinterpret_cast<sockaddr_in6*>(ss);
++      return reinterpret_cast<uint8_t*>(&ss6->sin6_addr);
++    } else if (family == AF_PACKET) {
++      sockaddr_ll* sll = reinterpret_cast<sockaddr_ll*>(ss);
++      return reinterpret_cast<uint8_t*>(&sll->sll_addr);
++    }
++    return nullptr;
++  }
++};
++ifaddrs_storage* new_ifaddrs_storage(ifaddrs** list) {
++  ifaddrs_storage *storage;
++  memset(storage, 0, sizeof(*storage));
++  // push_front onto `list`.
++  storage->ifa.ifa_next = *list;
++  *list = reinterpret_cast<ifaddrs*>(storage);
++  return storage;
++}
++#if !defined(__clang__)
++// GCC gets confused by NLMSG_DATA and doesn't realize that the old-style
++// cast is from a system header and should be ignored.
++#pragma GCC diagnostic ignored "-Wold-style-cast"
++#endif
++static void __handle_netlink_response(ifaddrs** out, nlmsghdr* hdr) {
++  if (hdr->nlmsg_type == RTM_NEWLINK) {
++    ifinfomsg* ifi = reinterpret_cast<ifinfomsg*>(NLMSG_DATA(hdr));
++    // Create a new ifaddr entry, and set the interface index and flags.
++    ifaddrs_storage* new_addr = new_ifaddrs_storage(out);
++    new_addr->interface_index = ifi->ifi_index;
++    new_addr->ifa.ifa_flags = ifi->ifi_flags;
++    // Go through the various bits of information and find the name.
++    rtattr* rta = IFLA_RTA(ifi);
++    size_t rta_len = IFLA_PAYLOAD(hdr);
++    while (RTA_OK(rta, rta_len)) {
++      if (rta->rta_type == IFLA_ADDRESS) {
++          if (RTA_PAYLOAD(rta) < sizeof(new_addr->addr)) {
++            new_addr->SetAddress(AF_PACKET, RTA_DATA(rta), RTA_PAYLOAD(rta));
++            new_addr->SetPacketAttributes(ifi->ifi_index, ifi->ifi_type, RTA_PAYLOAD(rta));
++          }
++      } else if (rta->rta_type == IFLA_BROADCAST) {
++          if (RTA_PAYLOAD(rta) < sizeof(new_addr->ifa_ifu)) {
++            new_addr->SetBroadcastAddress(AF_PACKET, RTA_DATA(rta), RTA_PAYLOAD(rta));
++            new_addr->SetPacketAttributes(ifi->ifi_index, ifi->ifi_type, RTA_PAYLOAD(rta));
++          }
++      } else if (rta->rta_type == IFLA_IFNAME) {
++          if (RTA_PAYLOAD(rta) < sizeof(new_addr->name)) {
++            memcpy(new_addr->name, RTA_DATA(rta), RTA_PAYLOAD(rta));
++            new_addr->ifa.ifa_name = new_addr->name;
++          }
++      }
++      rta = RTA_NEXT(rta, rta_len);
++    }
++  } else if (hdr->nlmsg_type == RTM_NEWADDR) {
++    ifaddrmsg* msg = reinterpret_cast<ifaddrmsg*>(NLMSG_DATA(hdr));
++    // We should already know about this from an RTM_NEWLINK message.
++    const ifaddrs_storage* addr = reinterpret_cast<const ifaddrs_storage*>(*out);
++    while (addr != nullptr && addr->interface_index != static_cast<int>(msg->ifa_index)) {
++      addr = reinterpret_cast<const ifaddrs_storage*>(addr->ifa.ifa_next);
++    }
++    // If this is an unknown interface, ignore whatever we're being told about it.
++    if (addr == nullptr) return;
++    // Create a new ifaddr entry and copy what we already know.
++    ifaddrs_storage* new_addr = new_ifaddrs_storage(out);
++    // We can just copy the name rather than look for IFA_LABEL.
++    strcpy(new_addr->name, addr->name);
++    new_addr->ifa.ifa_name = new_addr->name;
++    new_addr->ifa.ifa_flags = addr->ifa.ifa_flags;
++    new_addr->interface_index = addr->interface_index;
++    // Go through the various bits of information and find the address
++    // and any broadcast/destination address.
++    rtattr* rta = IFA_RTA(msg);
++    size_t rta_len = IFA_PAYLOAD(hdr);
++    while (RTA_OK(rta, rta_len)) {
++      if (rta->rta_type == IFA_ADDRESS) {
++        if (msg->ifa_family == AF_INET || msg->ifa_family == AF_INET6) {
++          new_addr->SetAddress(msg->ifa_family, RTA_DATA(rta), RTA_PAYLOAD(rta));
++          new_addr->SetNetmask(msg->ifa_family, msg->ifa_prefixlen);
++        }
++      } else if (rta->rta_type == IFA_BROADCAST) {
++        if (msg->ifa_family == AF_INET || msg->ifa_family == AF_INET6) {
++          new_addr->SetBroadcastAddress(msg->ifa_family, RTA_DATA(rta), RTA_PAYLOAD(rta));
++        }
++      }
++      rta = RTA_NEXT(rta, rta_len);
++    }
++  }
++}
++static bool __send_netlink_request(int fd, int type) {
++  struct NetlinkMessage {
++    nlmsghdr hdr;
++    rtgenmsg msg;
++  } request;
++  memset(&request, 0, sizeof(request));
++  request.hdr.nlmsg_flags = NLM_F_DUMP | NLM_F_REQUEST;
++  request.hdr.nlmsg_type = type;
++  request.hdr.nlmsg_len = sizeof(request);
++  request.msg.rtgen_family = AF_UNSPEC; // All families.
++  return (TEMP_FAILURE_RETRY(send(fd, &request, sizeof(request), 0)) == sizeof(request));
++}
++static bool __read_netlink_responses(int fd, ifaddrs** out, char* buf, size_t buf_len) {
++  ssize_t bytes_read;
++  // Read through all the responses, handing interesting ones to __handle_netlink_response.
++  while ((bytes_read = TEMP_FAILURE_RETRY(recv(fd, buf, buf_len, 0))) > 0) {
++    nlmsghdr* hdr = reinterpret_cast<nlmsghdr*>(buf);
++    for (; NLMSG_OK(hdr, static_cast<size_t>(bytes_read)); hdr = NLMSG_NEXT(hdr, bytes_read)) {
++      if (hdr->nlmsg_type == NLMSG_DONE) return true;
++      if (hdr->nlmsg_type == NLMSG_ERROR) return false;
++      __handle_netlink_response(out, hdr);
++    }
++  }
++  // We only get here if recv fails before we see a NLMSG_DONE.
++  return false;
++}
++int getifaddrs(ifaddrs** out) {
++  // Make cleanup easy.
++  *out = nullptr;
++  // The kernel keeps packets under 8KiB (NLMSG_GOODSIZE),
++  // but that's a bit too large to go on the stack.
++  size_t buf_len = 8192;
++  char* buf = NEW_C_HEAP_ARRAY(char, buf_len, mtInternal);
++  if (buf == nullptr) return -1;
++  // Open the netlink socket and ask for all the links and addresses.
++  int fd = socket(PF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
++  bool okay = fd != -1 &&
++      __send_netlink_request(fd, RTM_GETLINK) && __read_netlink_responses(fd, out, buf, buf_len) &&
++      __send_netlink_request(fd, RTM_GETADDR) && __read_netlink_responses(fd, out, buf, buf_len);
++  if (!okay) {
++    freeifaddrs(*out);
++    // Ensure that callers crash if they forget to check for success.
++    *out = nullptr;
++  }
++  {
++    int saved_errno = errno;
++    close(fd);
++    FREE_C_HEAP_ARRAY(char, buf);
++    errno = saved_errno;
++  }
++  return okay ? 0 : -1;
++}
++void freeifaddrs(ifaddrs* list) {
++  while (list != nullptr) {
++    ifaddrs* current = list;
++    list = list->ifa_next;
++    free(current);
++  }
++}
++#endif
++
+ /**
+    /proc/[number]/stat
+               Status information about the process.  This is used by ps(1).  It is defined in /usr/src/linux/fs/proc/array.c.
+diff --git a/src/hotspot/os/linux/perfMemory_linux.cpp b/src/hotspot/os/linux/perfMemory_linux.cpp
+index b3f637811f..4a243f4f5b 100644
+--- a/src/hotspot/os/linux/perfMemory_linux.cpp
++++ b/src/hotspot/os/linux/perfMemory_linux.cpp
+@@ -149,7 +149,7 @@ static void save_memory_to_file(char* addr, size_t size) {
+ static char* get_user_tmp_dir(const char* user, int vmid, int nspid) {
+   char buffer[TMP_BUFFER_LEN];
+   char* tmpdir = (char *)os::get_temp_directory();
+-  assert(strlen(tmpdir) == 4, "No longer using /tmp - update buffer size");
++  // assert(strlen(tmpdir) == 4, "No longer using /tmp - update buffer size");
+ 
+   if (nspid != -1) {
+     jio_snprintf(buffer, TMP_BUFFER_LEN, "/proc/%d/root%s", vmid, tmpdir);
+@@ -526,7 +526,7 @@ static char* get_user_name_slow(int vmid, int nspid, TRAPS) {
+   char buffer[MAXPATHLEN + 1];
+   int searchpid;
+   char* tmpdirname = (char *)os::get_temp_directory();
+-  assert(strlen(tmpdirname) == 4, "No longer using /tmp - update buffer size");
++  // assert(strlen(tmpdirname) == 4, "No longer using /tmp - update buffer size");
+ 
+   if (nspid == -1) {
+     searchpid = vmid;
+diff --git a/src/hotspot/os/posix/os_posix.cpp b/src/hotspot/os/posix/os_posix.cpp
+index 94beefe018..53a7d35931 100644
+--- a/src/hotspot/os/posix/os_posix.cpp
++++ b/src/hotspot/os/posix/os_posix.cpp
+@@ -46,7 +46,9 @@
+ #include <sys/utsname.h>
+ #include <time.h>
+ #include <unistd.h>
++#ifndef __ANDROID__
+ #include <utmpx.h>
++#endif
+ 
+ // Todo: provide a os::get_max_process_id() or similar. Number of processes
+ // may have been configured, can be read more accurately from proc fs etc.
+@@ -377,6 +379,7 @@ void os::Posix::print_load_average(outputStream* st) {
+ // unfortunately it does not work on macOS and Linux because the utx chain has no entry
+ // for reboot at least on my test machines
+ void os::Posix::print_uptime_info(outputStream* st) {
++#ifndef __ANDROID__
+   int bootsec = -1;
+   int currsec = time(NULL);
+   struct utmpx* ent;
+@@ -391,6 +394,7 @@ void os::Posix::print_uptime_info(outputStream* st) {
+   if (bootsec != -1) {
+     os::print_dhm(st, "OS uptime:", (long) (currsec-bootsec));
+   }
++#endif
+ }
+ 
+ static void print_rlimit(outputStream* st, const char* msg,
+diff --git a/src/hotspot/os_cpu/linux_aarch64/threadLS_linux_aarch64.s b/src/hotspot/os_cpu/linux_aarch64/threadLS_linux_aarch64.s
+index f541844b9d..727cb0b84e 100644
+--- a/src/hotspot/os_cpu/linux_aarch64/threadLS_linux_aarch64.s
++++ b/src/hotspot/os_cpu/linux_aarch64/threadLS_linux_aarch64.s
+@@ -18,27 +18,3 @@
+ // Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+ // or visit www.oracle.com if you need additional information or have any
+ // questions.
+-
+-        // JavaThread::aarch64_get_thread_helper()
+-        //
+-        // Return the current thread pointer in x0.
+-        // Clobber x1, flags.
+-        // All other registers are preserved,
+-
+-	.global	_ZN10JavaThread25aarch64_get_thread_helperEv
+-	.type	_ZN10JavaThread25aarch64_get_thread_helperEv, %function
+-
+-_ZN10JavaThread25aarch64_get_thread_helperEv:
+-	stp x29, x30, [sp, -16]!
+-	adrp x0, :tlsdesc:_ZN6Thread12_thr_currentE
+-	ldr x1, [x0, #:tlsdesc_lo12:_ZN6Thread12_thr_currentE]
+-	add x0, x0, :tlsdesc_lo12:_ZN6Thread12_thr_currentE
+-	.tlsdesccall _ZN6Thread12_thr_currentE
+-	blr x1
+-	mrs x1, tpidr_el0
+-	add x0, x1, x0
+-	ldr x0, [x0]
+-	ldp x29, x30, [sp], 16
+-	ret
+-
+-	.size _ZN10JavaThread25aarch64_get_thread_helperEv, .-_ZN10JavaThread25aarch64_get_thread_helperEv
+diff --git a/src/hotspot/os_cpu/linux_aarch64/thread_linux_aarch64.hpp b/src/hotspot/os_cpu/linux_aarch64/thread_linux_aarch64.hpp
+index 985b664aaf..a96d4441c9 100644
+--- a/src/hotspot/os_cpu/linux_aarch64/thread_linux_aarch64.hpp
++++ b/src/hotspot/os_cpu/linux_aarch64/thread_linux_aarch64.hpp
+@@ -60,7 +60,14 @@ private:
+   bool pd_get_top_frame(frame* fr_addr, void* ucontext, bool isInJava);
+ public:
+ 
+-  static Thread *aarch64_get_thread_helper();
++  static Thread *aarch64_get_thread_helper()
++#ifndef __ANDROID__
++;
++#else
++  {
++    return Thread::current();
++  }
++#endif
+ 
+   // These routines are only used on cpu architectures that
+   // have separate register stacks (Itanium).
+diff --git a/src/hotspot/os_cpu/linux_arm/fpu_control.h b/src/hotspot/os_cpu/linux_arm/fpu_control.h
+new file mode 100644
+index 0000000000..6a2e08808a
+--- /dev/null
++++ b/src/hotspot/os_cpu/linux_arm/fpu_control.h
+@@ -0,0 +1,59 @@
++/* FPU control word definitions.  ARM VFP version.
++   Copyright (C) 2004-2019 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library.  If not, see
++   <http://www.gnu.org/licenses/>.  */
++#ifndef _FPU_CONTROL_H
++#define _FPU_CONTROL_H
++#if !(defined(_LIBC) && !defined(_LIBC_TEST)) && defined(__SOFTFP__)
++#define _FPU_RESERVED 0xffffffff
++#define _FPU_DEFAULT  0x00000000
++typedef unsigned int fpu_control_t;
++#define _FPU_GETCW(cw) (cw) = 0
++#define _FPU_SETCW(cw) (void) (cw)
++extern fpu_control_t __fpu_control;
++#else
++/* masking of interrupts */
++#define _FPU_MASK_IM        0x00000100        /* invalid operation */
++#define _FPU_MASK_ZM        0x00000200        /* divide by zero */
++#define _FPU_MASK_OM        0x00000400        /* overflow */
++#define _FPU_MASK_UM        0x00000800        /* underflow */
++#define _FPU_MASK_PM        0x00001000        /* inexact */
++#define _FPU_MASK_NZCV        0xf0000000        /* NZCV flags */
++#define _FPU_MASK_RM        0x00c00000        /* rounding mode */
++#define _FPU_MASK_EXCEPT 0x00001f1f        /* all exception flags */
++/* Some bits in the FPSCR are not yet defined.  They must be preserved when
++   modifying the contents.  */
++#define _FPU_RESERVED        0x00086060
++#define _FPU_DEFAULT    0x00000000
++/* Default + exceptions enabled.  */
++#define _FPU_IEEE        (_FPU_DEFAULT | 0x00001f00)
++/* Type of the control word.  */
++typedef unsigned int fpu_control_t;
++/* Macros for accessing the hardware control word.  */
++#ifdef __SOFTFP__
++/* This is fmrx %0, fpscr.  */
++# define _FPU_GETCW(cw) \
++  __asm__ __volatile__ ("mrc p10, 7, %0, cr1, cr0, 0" : "=r" (cw))
++/* This is fmxr fpscr, %0.  */
++# define _FPU_SETCW(cw) \
++  __asm__ __volatile__ ("mcr p10, 7, %0, cr1, cr0, 0" : : "r" (cw))
++#else
++# define _FPU_GETCW(cw) \
++  __asm__ __volatile__ ("vmrs %0, fpscr" : "=r" (cw))
++# define _FPU_SETCW(cw) \
++  __asm__ __volatile__ ("vmsr fpscr, %0" : : "r" (cw))
++#endif
++/* Default control word set at startup.  */
++extern fpu_control_t __fpu_control;
++#endif /* __SOFTFP__ */
++#endif /* _FPU_CONTROL_H */
+\ No newline at end of file
+diff --git a/src/hotspot/os_cpu/linux_arm/linux_arm_32.s b/src/hotspot/os_cpu/linux_arm/linux_arm_32.s
+index ededd0fe6e..29fcd9a3f7 100644
+--- a/src/hotspot/os_cpu/linux_arm/linux_arm_32.s
++++ b/src/hotspot/os_cpu/linux_arm/linux_arm_32.s
+@@ -94,7 +94,7 @@ dw_f2b_loop_32:
+         stmia to!, {r3 - r9, ip}
+         bgt     dw_f2b_loop_32
+ dw_f2b_loop_32_finish:
+-        addlts  r2, #32
++        addslt  r2, #32
+         beq     disjoint_words_finish
+         cmp     r2, #16
+ 	blt	disjoint_words_small
+@@ -142,7 +142,7 @@ cw_f2b_loop_32:
+         stmia to!, {r3 - r9, ip}
+         bgt     cw_f2b_loop_32
+ cw_f2b_loop_32_finish:
+-        addlts  r2, #32
++        addslt  r2, #32
+         beq     conjoint_words_finish
+         cmp     r2, #16
+ 	blt	conjoint_words_small
+@@ -175,7 +175,7 @@ cw_b2f_loop_32:
+         stmdb to!, {r3-r9,ip}
+         bgt     cw_b2f_loop_32
+ cw_b2f_loop_32_finish:
+-        addlts  r2, #32
++        addslt  r2, #32
+         beq     conjoint_words_finish
+         cmp     r2, #16
+ 	blt	cw_b2f_copy_small
+@@ -227,7 +227,7 @@ cs_f2b_loop_32:
+         stmia to!, {r3 - r9, ip}
+         bgt     cs_f2b_loop_32
+ cs_f2b_loop_32_finish:
+-        addlts  r2, #32
++        addslt  r2, #32
+         beq     conjoint_shorts_finish
+         movs    r6, r2, lsr #3
+         .align 3
+@@ -243,11 +243,11 @@ cs_f2b_4:
+         beq     conjoint_shorts_finish
+         cmp     r2, #4
+         ldrh    r3, [from], #2
+-        ldrgeh  r4, [from], #2
+-        ldrgth  r5, [from], #2
++        ldrhge  r4, [from], #2
++        ldrhgt  r5, [from], #2
+         strh    r3, [to], #2
+-        strgeh  r4, [to], #2
+-        strgth  r5, [to], #2
++        strhge  r4, [to], #2
++        strhgt  r5, [to], #2
+         b       conjoint_shorts_finish
+ 
+ 	# Destination not aligned
+@@ -305,11 +305,11 @@ cs_f2b_4_u:
+         beq     conjoint_shorts_finish
+         cmp     r2, #4
+         ldrh    r3, [from], #2
+-        ldrgeh  r4, [from], #2
+-        ldrgth  r5, [from], #2
++        ldrhge  r4, [from], #2
++        ldrhgt  r5, [from], #2
+         strh    r3, [to], #2
+-        strgeh  r4, [to], #2
+-        strgth  r5, [to], #2
++        strhge  r4, [to], #2
++        strhgt  r5, [to], #2
+         b       conjoint_shorts_finish
+ 
+ 	# Src and dest overlap, copy in a descending order
+@@ -332,7 +332,7 @@ cs_b2f_loop_32:
+         stmdb to!, {r3-r9,ip}
+         bgt     cs_b2f_loop_32
+ cs_b2f_loop_32_finish:
+-        addlts  r2, #32
++        addslt  r2, #32
+         beq     conjoint_shorts_finish
+         cmp     r2, #24
+         blt     cs_b2f_16
+@@ -358,11 +358,11 @@ cs_b2f_8:
+ cs_b2f_all_copy:
+         cmp     r2, #4
+         ldrh    r3, [from, #-2]!
+-        ldrgeh  r4, [from, #-2]!
+-        ldrgth  r5, [from, #-2]!
++        ldrhge  r4, [from, #-2]!
++        ldrhgt  r5, [from, #-2]!
+         strh    r3, [to, #-2]!
+-        strgeh  r4, [to, #-2]!
+-        strgth  r5, [to, #-2]!
++        strhge  r4, [to, #-2]!
++        strhgt  r5, [to, #-2]!
+         b       conjoint_shorts_finish
+ 
+ 	# Destination not aligned
+@@ -397,7 +397,7 @@ cs_b2f_16_loop_u:
+         bgt     cs_b2f_16_loop_u
+         beq     conjoint_shorts_finish
+ cs_b2f_16_loop_u_finished:
+-        addlts  r2, #16
++        addslt  r2, #16
+         ldr     r3, [from]
+ 	cmp     r2, #10
+         blt     cs_b2f_2_u_loop
+@@ -460,7 +460,7 @@ cl_f2b_loop_32:
+         stmia to!, {r3 - r9, ip}
+         bgt     cl_f2b_loop_32
+ cl_f2b_loop_32_finish:
+-        addlts  r2, #32
++        addslt  r2, #32
+         beq     conjoint_longs_finish
+ conjoint_longs_small:
+         cmp     r2, #16
+@@ -493,7 +493,7 @@ cl_b2f_loop_32:
+         stmdb 	to!, {r3 - r9, ip}
+         bgt     cl_b2f_loop_32
+ cl_b2f_loop_32_finish:
+-        addlts  r2, #32
++        addslt  r2, #32
+         beq     conjoint_longs_finish
+         cmp     r2, #16
+ 	blt	cl_b2f_copy_8
+diff --git a/src/hotspot/os_cpu/linux_arm/os_linux_arm.cpp b/src/hotspot/os_cpu/linux_arm/os_linux_arm.cpp
+index 8f54f0748d..fcb0a51e73 100644
+--- a/src/hotspot/os_cpu/linux_arm/os_linux_arm.cpp
++++ b/src/hotspot/os_cpu/linux_arm/os_linux_arm.cpp
+@@ -71,7 +71,11 @@
+ # include <pwd.h>
+ # include <poll.h>
+ # include <ucontext.h>
++#ifndef __ANDROID__
+ # include <fpu_control.h>
++#else
++# include "fpu_control.h" //include the local header
++#endif
+ # include <asm/ptrace.h>
+ 
+ #define SPELL_REG_SP  "sp"
+@@ -82,8 +86,14 @@
+ #endif
+ 
+ address os::current_stack_pointer() {
++#if defined(__clang__) || defined(__llvm__)
++  void *sp;
++  __asm__("mov %0, " SPELL_REG_SP : "=r"(sp));
++  return (address) sp;
++#else
+   register address sp __asm__ (SPELL_REG_SP);
+   return sp;
++#endif
+ }
+ 
+ char* os::non_memory_address_word() {
+@@ -523,8 +533,8 @@ void os::setup_fpu() {
+ #if !defined(__SOFTFP__) && defined(__VFP_FP__)
+   // Turn on IEEE-754 compliant VFP mode
+   __asm__ volatile (
+-    "mov %%r0, #0;"
+-    "fmxr fpscr, %%r0"
++    "mov r0, #0;"
++    "fmxr fpscr, r0"
+     : /* no output */ : /* no input */ : "r0"
+   );
+ #endif
+diff --git a/src/hotspot/os_cpu/linux_x86/fpu_control.h b/src/hotspot/os_cpu/linux_x86/fpu_control.h
+new file mode 100644
+index 0000000000..03f9f7e6a2
+--- /dev/null
++++ b/src/hotspot/os_cpu/linux_x86/fpu_control.h
+@@ -0,0 +1,109 @@
++/* FPU control word bits.  x86 version.
++   Copyright (C) 1993-2012 Free Software Foundation, Inc.
++   This file is part of the GNU C Library.
++   Contributed by Olaf Flebbe.
++
++   The GNU C Library is free software; you can redistribute it and/or
++   modify it under the terms of the GNU Lesser General Public
++   License as published by the Free Software Foundation; either
++   version 2.1 of the License, or (at your option) any later version.
++
++   The GNU C Library is distributed in the hope that it will be useful,
++   but WITHOUT ANY WARRANTY; without even the implied warranty of
++   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++   Lesser General Public License for more details.
++
++   You should have received a copy of the GNU Lesser General Public
++   License along with the GNU C Library; if not, see
++   <http://www.gnu.org/licenses/>.  */
++
++#ifndef _FPU_CONTROL_H
++#define _FPU_CONTROL_H	1
++
++/* Note that this file sets on x86-64 only the x87 FPU, it does not
++   touch the SSE unit.  */
++
++/* Here is the dirty part. Set up your 387 through the control word
++ * (cw) register.
++ *
++ *     15-13    12  11-10  9-8     7-6     5    4    3    2    1    0
++ * | reserved | IC | RC  | PC | reserved | PM | UM | OM | ZM | DM | IM
++ *
++ * IM: Invalid operation mask
++ * DM: Denormalized operand mask
++ * ZM: Zero-divide mask
++ * OM: Overflow mask
++ * UM: Underflow mask
++ * PM: Precision (inexact result) mask
++ *
++ * Mask bit is 1 means no interrupt.
++ *
++ * PC: Precision control
++ * 11 - round to extended precision
++ * 10 - round to double precision
++ * 00 - round to single precision
++ *
++ * RC: Rounding control
++ * 00 - rounding to nearest
++ * 01 - rounding down (toward - infinity)
++ * 10 - rounding up (toward + infinity)
++ * 11 - rounding toward zero
++ *
++ * IC: Infinity control
++ * That is for 8087 and 80287 only.
++ *
++ * The hardware default is 0x037f which we use.
++ */
++
++#include <features.h>
++
++/* masking of interrupts */
++#define _FPU_MASK_IM  0x01
++#define _FPU_MASK_DM  0x02
++#define _FPU_MASK_ZM  0x04
++#define _FPU_MASK_OM  0x08
++#define _FPU_MASK_UM  0x10
++#define _FPU_MASK_PM  0x20
++
++/* precision control */
++#define _FPU_EXTENDED 0x300	/* libm requires double extended precision.  */
++#define _FPU_DOUBLE   0x200
++#define _FPU_SINGLE   0x0
++
++/* rounding control */
++#define _FPU_RC_NEAREST 0x0    /* RECOMMENDED */
++#define _FPU_RC_DOWN    0x400
++#define _FPU_RC_UP      0x800
++#define _FPU_RC_ZERO    0xC00
++
++#define _FPU_RESERVED 0xF0C0  /* Reserved bits in cw */
++
++
++/* The fdlibm code requires strict IEEE double precision arithmetic,
++   and no interrupts for exceptions, rounding to nearest.  */
++
++#define _FPU_DEFAULT  0x037f
++
++/* IEEE:  same as above.  */
++#define _FPU_IEEE     0x037f
++
++/* Type of the control word.  */
++typedef unsigned int fpu_control_t __attribute__ ((__mode__ (__HI__)));
++
++/* Macros for accessing the hardware control word.  "*&" is used to
++   work around a bug in older versions of GCC.  __volatile__ is used
++   to support combination of writing the control register and reading
++   it back.  Without __volatile__, the old value may be used for reading
++   back under compiler optimization.
++
++   Note that the use of these macros is not sufficient anymore with
++   recent hardware nor on x86-64.  Some floating point operations are
++   executed in the SSE/SSE2 engines which have their own control and
++   status register.  */
++#define _FPU_GETCW(cw) __asm__ __volatile__ ("fnstcw %0" : "=m" (*&cw))
++#define _FPU_SETCW(cw) __asm__ __volatile__ ("fldcw %0" : : "m" (*&cw))
++
++/* Default control word set at startup.  */
++extern fpu_control_t __fpu_control;
++
++#endif	/* fpu_control.h */
+\ No newline at end of file
+diff --git a/src/hotspot/os_cpu/linux_x86/os_linux_x86.cpp b/src/hotspot/os_cpu/linux_x86/os_linux_x86.cpp
+index 247da0a811..1ccc01ae16 100644
+--- a/src/hotspot/os_cpu/linux_x86/os_linux_x86.cpp
++++ b/src/hotspot/os_cpu/linux_x86/os_linux_x86.cpp
+@@ -75,8 +75,10 @@
+ # include <pwd.h>
+ # include <poll.h>
+ # include <ucontext.h>
+-#ifndef AMD64
++#if !defined(AMD64) && !defined(__ANDROID__)
+ # include <fpu_control.h>
++#elif defined(__ANDROID__)
++# include "fpu_control.h"
+ #endif
+ 
+ #ifdef AMD64
+diff --git a/src/hotspot/share/opto/memnode.cpp b/src/hotspot/share/opto/memnode.cpp
+index e194386b56..b05e9a876f 100644
+--- a/src/hotspot/share/opto/memnode.cpp
++++ b/src/hotspot/share/opto/memnode.cpp
+@@ -4251,9 +4251,9 @@ Node* InitializeNode::complete_stores(Node* rawctl, Node* rawmem, Node* rawptr,
+ 
+   remove_extra_zeroes();
+ 
+-  if (ReduceFieldZeroing || ReduceBulkZeroing)
++  // if (ReduceFieldZeroing || ReduceBulkZeroing)
+     // reduce instruction count for common initialization patterns
+-    coalesce_subword_stores(header_size, size_in_bytes, phase);
++    // coalesce_subword_stores(header_size, size_in_bytes, phase);
+ 
+   Node* zmem = zero_memory();   // initially zero memory state
+   Node* inits = zmem;           // accumulating a linearized chain of inits
+diff --git a/src/hotspot/share/utilities/elfFile.hpp b/src/hotspot/share/utilities/elfFile.hpp
+index 35788b940c..23278d5957 100644
+--- a/src/hotspot/share/utilities/elfFile.hpp
++++ b/src/hotspot/share/utilities/elfFile.hpp
+@@ -47,8 +47,10 @@ typedef Elf64_Phdr      Elf_Phdr;
+ typedef Elf64_Sym       Elf_Sym;
+ 
+ #if !defined(_ALLBSD_SOURCE) || defined(__APPLE__)
++#ifndef ELF_ST_TYPE
+ #define ELF_ST_TYPE ELF64_ST_TYPE
+ #endif
++#endif
+ 
+ #else
+ 
+@@ -63,9 +65,11 @@ typedef Elf32_Phdr      Elf_Phdr;
+ typedef Elf32_Sym       Elf_Sym;
+ 
+ #if !defined(_ALLBSD_SOURCE) || defined(__APPLE__)
++#ifndef ELF_ST_TYPE
+ #define ELF_ST_TYPE ELF32_ST_TYPE
+ #endif
+ #endif
++#endif
+ 
+ #include "globalDefinitions.hpp"
+ #include "memory/allocation.hpp"
+diff --git a/src/hotspot/share/utilities/globalDefinitions_gcc.hpp b/src/hotspot/share/utilities/globalDefinitions_gcc.hpp
+index db4ef3af63..98cc76c36a 100644
+--- a/src/hotspot/share/utilities/globalDefinitions_gcc.hpp
++++ b/src/hotspot/share/utilities/globalDefinitions_gcc.hpp
+@@ -56,6 +56,10 @@
+ #include <limits.h>
+ #include <errno.h>
+ 
++#if defined(__ANDROID__) && !defined(ANDROID)
++#define ANDROID 1
++#endif
++
+ #ifdef SOLARIS
+ #include <sys/trap.h>
+ #include <sys/regset.h>
