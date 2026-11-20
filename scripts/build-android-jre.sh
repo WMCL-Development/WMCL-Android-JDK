@@ -295,12 +295,12 @@ unset CFLAGS CXXFLAGS LDFLAGS
 make -C "$BUILD_DIR" JOBS="$(nproc)" USE_PRECOMPILED_HEADER=0 images
 
 echo "==> Creating JRE image"
-JDK_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 2 -type d -name jdk | head -n 1)"
-test -d "$JDK_IMAGE"
 if [ "$JDK_MAJOR" = "8" ]; then
   JRE_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 1 -type d -name 'j2re-image' | head -n 1)"
   test -d "$JRE_IMAGE"
 else
+  JDK_IMAGE="$(find "$BUILD_DIR/images" -maxdepth 2 -type d -name jdk | head -n 1)"
+  test -d "$JDK_IMAGE"
   JRE_IMAGE="$WORK/jre-$JDK_MAJOR-image"
   rm -rf "$JRE_IMAGE"
   MODULE_PATH="$JDK_IMAGE/jmods"
