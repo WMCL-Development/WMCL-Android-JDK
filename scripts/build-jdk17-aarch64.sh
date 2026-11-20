@@ -5,10 +5,11 @@
 # OpenJDK runtime: GPLv2+CE. Our build tooling: Apache-2.0.
 # Android patches are downloaded at build time from a pinned Amethyst commit.
 set -eo pipefail
+JDK_REPO="openjdk/jdk17u"
 JDK_MAJOR="17"
 
 JDK_VERSION="17.0.21.1"
-JDK_TAG="jdk-$JDK_VERSION-ga"
+JDK_TAG="jdk-17.0.21.1-ga"
 PATCH_REPO="AngelAuraMC/angelauramc-openjdk-build"
 PATCH_COMMIT="196da32d80fe96d6967ca1c154f102cff0dfc389"
 PATCH_DIR="patches/jre_17/android"
@@ -63,15 +64,18 @@ if [ ! -d "$FREETYPE_DIR" ]; then
   echo "==> Building freetype for $TARGET"
   (
     cd "freetype-$FREETYPE_VERSION"
-    ./configure --host="$TARGET" --prefix="$FREETYPE_DIR" --without-zlib --with-png=no --with-harfbuzz=no
-    CFLAGS=-fno-rtti CXXFLAGS=-fno-rtti make -j"$(nproc)"
+    export PATH="$TOOLCHAIN/bin:$PATH"
+    export CC="$TOOLCHAIN/bin/$TARGET$API-clang"
+    export CXX="$TOOLCHAIN/bin/$TARGET$API-clang++"
+    ./configure --host="$TARGET" --prefix="$FREETYPE_DIR" --without-zlib --with-png=no --with-harfbuzz=no CFLAGS="--sysroot=$TOOLCHAIN/sysroot" LDFLAGS="--sysroot=$TOOLCHAIN/sysroot"
+    CFLAGS="-fno-rtti --sysroot=$TOOLCHAIN/sysroot" CXXFLAGS="-fno-rtti --sysroot=$TOOLCHAIN/sysroot" make -j"$(nproc)"
     make install
   )
 fi
 
 echo "==> Cloning OpenJDK $JDK_TAG"
 if [ ! -d "$WORK/openjdk/.git" ]; then
-  git clone --depth 1 --branch "$JDK_TAG" https://github.com/openjdk/jdk17u "$WORK/openjdk"
+  git clone --depth 1 --branch "$JDK_TAG" https://github.com/$JDK_REPO "$WORK/openjdk"
 fi
 cd "$WORK/openjdk"
 git reset --hard
@@ -134,8 +138,8 @@ done
 export CFLAGS="-DLE_STANDALONE -O3 -mllvm -polly -DANDROID -Wno-error=implicit-function-declaration -Wno-error=int-conversion -I$TOOLCHAIN/sysroot/usr/include"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="-L$WORK/dummy_libs -Wl,--undefined-version"
-export CC="$WORK/android-wrapped-clang"
-export CXX="$WORK/android-wrapped-clang++"
+export CC="$TOOLCHAIN/bin/$TARGET$API-clang"
+export CXX="$TOOLCHAIN/bin/$TARGET$API-clang++"
 export AR="$TOOLCHAIN/bin/llvm-ar"
 export AS="$TOOLCHAIN/bin/llvm-as"
 export LD="$TOOLCHAIN/bin/ld"
@@ -146,6 +150,13 @@ export STRIP="$TOOLCHAIN/bin/llvm-strip"
 
 echo "==> Configuring OpenJDK $JDK_VERSION for $TARGET"
 bash ./configure   --openjdk-target="$TARGET"   --with-toolchain-type=gcc   --with-extra-cflags="$CFLAGS"   --with-extra-cxxflags="$CXXFLAGS"   --with-extra-ldflags="$LDFLAGS"   --disable-precompiled-headers   --disable-warnings-as-errors   --enable-option-checking=fatal   --enable-headless-only=yes   --with-jvm-variants="$JVM_VARIANTS"   --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc   --with-cups-include="$WORK/cups-$CUPS_VERSION"   --with-devkit="$TOOLCHAIN"   --with-native-debug-symbols=external   --with-debug-level="$JDK_DEBUG_LEVEL"   --with-fontconfig-include="$TOOLCHAIN/sysroot/usr/include"   --x-includes="$TOOLCHAIN/sysroot/usr/include/X11"   --x-libraries=/usr/lib   --with-freetype-include="$FREETYPE_DIR/include/freetype2"   --with-freetype-lib="$FREETYPE_DIR/lib"
+
+
+; then
+  echo "configure failed; dumping config.log tail" >&2
+  tail -n 300 config.log >&2
+  exit 1
+fi
 
 echo "==> Building OpenJDK images"
 BUILD_DIR="$(find build -maxdepth 1 -type d -name "linux-$TARGET_JDK-*" | head -n 1)"
