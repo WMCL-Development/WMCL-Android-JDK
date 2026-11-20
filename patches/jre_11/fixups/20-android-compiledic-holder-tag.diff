@@ -1,3 +1,5 @@
+diff --git a/src/hotspot/share/code/compiledIC.cpp b/src/hotspot/share/code/compiledIC.cpp
+index 3a39b6ed0..73b192e8c 100644
 --- a/src/hotspot/share/code/compiledIC.cpp
 +++ b/src/hotspot/share/code/compiledIC.cpp
 @@ -31,6 +31,7 @@
@@ -8,7 +10,7 @@
  #include "memory/metadataFactory.hpp"
  #include "memory/oopFactory.hpp"
  #include "memory/resourceArea.hpp"
-@@ -40,11 +41,47 @@
+@@ -40,10 +41,47 @@
  #include "runtime/handles.inline.hpp"
  #include "runtime/icache.hpp"
  #include "runtime/sharedRuntime.hpp"
@@ -17,7 +19,6 @@
  #include "utilities/events.hpp"
  
  
--// Every time a compiled IC is changed or its type is being accessed,
 +
 +// On Android the bionic allocator tags C-heap pointers in the top byte (scudo
 +// heap tagging; with MTE disabled the tag is a process-wide constant, e.g.
@@ -53,11 +54,11 @@
 +  }
 +  return (void*)v;
 +}
-+\n// Every time a compiled IC is changed or its type is being accessed,
++
+ // Every time a compiled IC is changed or its type is being accessed,
  // either the CompiledIC_lock must be set or we must be at a safe point.
  
- //-----------------------------------------------------------------------------
-@@ -57,6 +94,9 @@
+@@ -57,6 +95,9 @@ void* CompiledIC::cached_value() const {
  
    if (!is_in_transition_state()) {
      void* data = get_data();
@@ -67,7 +68,7 @@
      // If we let the metadata value here be initialized to zero...
      assert(data != NULL || Universe::non_oop_word() == NULL,
             "no raw nulls in CompiledIC metadatas, because of patching races");
-@@ -84,7 +124,8 @@
+@@ -84,7 +125,8 @@ void CompiledIC::internal_set_ic_destination(address entry_point, bool is_icstub
      // the next safepoint.  Make sure that the CompiledICHolder* is
      // marked for release at this point since it won't be identifiable
      // once the entry point is overwritten.
