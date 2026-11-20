@@ -92,11 +92,21 @@ echo "==> Applying Android patches"
 for NAME in jdk8u_android.diff jdk8u_android_main.diff; do
   patch="$SRC_DIR/patches/$NAME"
   if git apply --reject --whitespace=fix "$patch"; then continue; fi
-  bad="$(find . -name '*.rej' | grep -v 'make/autoconf/build-aux/config.sub.rej' || true)"
+  # 8u514 has drifted from the 8u482 baseline these patches target. The only
+  # rejects are two small autoconf hunks; re-apply their intent by hand.
+  bad="$(find . -name '*.rej' -print | grep -vE '(^\./common/autoconf/(flags\.m4|version-numbers)\.rej$)|(^\./common/autoconf/build-aux/config\.sub\.rej$)' || true)"
   if [ -n "$bad" ]; then echo "Unresolved rejects from $NAME:"; echo "$bad"; exit 1; fi
+  if [ -f common/autoconf/flags.m4.rej ]; then
+    # Build JDK 8 with C++11 (context around the hunk changed upstream).
+    sed -i 's/-std=gnu++98/-std=gnu++11/' common/autoconf/flags.m4
+  fi
+  if [ -f common/autoconf/version-numbers.rej ]; then
+    # Android runtime branding (JDK_UPDATE_VERSION context changed upstream).
+    sed -i 's/^PRODUCT_SUFFIX="Runtime Environment"$/PRODUCT_SUFFIX="Android Runtime Environment"/' common/autoconf/version-numbers
+  fi
   find . -name '*.rej' -delete
   find . -name '*.orig' -delete
-  echo "note: skipped obsolete config.sub hunk from $NAME"
+  echo "note: re-applied drifted autoconf hunks from $NAME"
 done
 
 echo "==> Preparing toolchain headers"
