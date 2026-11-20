@@ -261,6 +261,19 @@ else
   if [ ! -d "$MODULE_PATH" ]; then MODULE_PATH="$BUILD_DIR/jmods"; fi
   "$JAVA_HOME/bin/jlink"     --module-path "$MODULE_PATH"     --add-modules java.base,java.compiler,java.datatransfer,java.desktop,java.instrument,java.logging,java.management,java.management.rmi,java.naming,java.net.http,java.prefs,java.rmi,java.scripting,java.se,java.security.jgss,java.security.sasl,java.sql,java.sql.rowset,java.transaction.xa,java.xml,java.xml.crypto,jdk.accessibility,jdk.charsets,jdk.crypto.cryptoki,jdk.crypto.ec,jdk.dynalink,jdk.httpserver,jdk.jdwp.agent,jdk.jfr,jdk.jsobject,jdk.localedata,jdk.management,jdk.management.agent,jdk.management.jfr,jdk.naming.dns,jdk.naming.rmi,jdk.net,jdk.nio.mapmode,jdk.sctp,jdk.security.auth,jdk.security.jgss,jdk.unsupported,jdk.xml.dom,jdk.zipfs     --output "$JRE_IMAGE"     --no-man-pages     --no-header-files     --release-info="$JDK_IMAGE/release"     --compress=0
 fi
+
+# jlink does not copy JDK image extras such as the fontconfig database and
+# bundled Lucida fonts.  java.desktop needs them at runtime (Minecraft's
+# Cacio agent initialises FontConfiguration during premain), so carry them
+# over from the JDK image.
+if [ -d "$JDK_IMAGE/lib" ]; then
+  cp -a "$JDK_IMAGE/lib"/fontconfig* "$JRE_IMAGE/lib/" 2>/dev/null || true
+  cp -a "$JDK_IMAGE/lib"/psfont*.properties "$JRE_IMAGE/lib/" 2>/dev/null || true
+  if [ -d "$JDK_IMAGE/lib/fonts" ]; then
+    cp -a "$JDK_IMAGE/lib/fonts" "$JRE_IMAGE/lib/"
+  fi
+fi
+
 if [ -f "$FREETYPE_DIR/lib/libfreetype.so" ]; then
   cp -f "$FREETYPE_DIR/lib/libfreetype.so" "$JRE_IMAGE/lib/"
 fi
