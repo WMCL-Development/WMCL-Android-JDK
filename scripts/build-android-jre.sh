@@ -224,6 +224,10 @@ static void* android_restore_heap_pointer_tag(void* p) {
 
 """
 if 'android_restore_heap_pointer_tag' not in s:
+    # Forward declaration: os::realloc() appears before os::free() in this file.
+    decl_anchor = 'void* os::malloc(size_t size, MEMFLAGS flags) {'
+    assert s.count(decl_anchor) == 1
+    s = s.replace(decl_anchor, 'static void* android_restore_heap_pointer_tag(void* p);\n\n' + decl_anchor, 1)
     anchor = 'void  os::free(void *memblock, MEMFLAGS memflags) {'
     assert s.count(anchor) == 1
     s = s.replace(anchor, helper + anchor, 1)
