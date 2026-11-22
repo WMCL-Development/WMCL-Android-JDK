@@ -195,6 +195,45 @@ if 'restore_compiled_ic_pointer_tag' not in s:
     open(p, 'w').write(s)
 PY
 grep -q 'restore_compiled_ic_pointer_tag' hotspot/src/share/vm/code/compiledIC.cpp || { echo 'jdk8 compiledIC tag fix did not apply'; exit 1; }
+# Even with the CompiledICHolder fix, a few JIT/C-heap paths can still hand a
+# 48-bit-truncated pointer to ::free().  Restore the process heap tag at the
+# allocator boundary as a safety net; metadata does not go through os::free.
+python3 - <<'PY'
+p = 'hotspot/src/share/vm/runtime/os.cpp'
+s = open(p).read()
+helper = """
+// Android's scudo allocator tags C-heap pointers in the top byte.  Some JIT
+// paths materialise C-heap pointers through 48-bit movz/movk sequences and can
+// hand a truncated pointer to free(); bionic then aborts.  Restore the
+// process-wide heap tag at the allocator boundary.
+static void* android_restore_heap_pointer_tag(void* p) {
+  uintptr_t v = (uintptr_t)p;
+  if (v != 0 && (v >> 48) == 0) {
+    static uintptr_t tag = (uintptr_t)-1;
+    if (tag == (uintptr_t)-1) {
+      void* probe = ::malloc(8);
+      tag = (probe == NULL) ? 0 : ((uintptr_t)probe & 0xff00000000000000ULL);
+      if (probe != NULL) {
+        ::free(probe);
+      }
+    }
+    v |= tag;
+  }
+  return (void*)v;
+}
+
+"""
+if 'android_restore_heap_pointer_tag' not in s:
+    anchor = 'void  os::free(void *memblock, MEMFLAGS memflags) {'
+    assert s.count(anchor) == 1
+    s = s.replace(anchor, helper + anchor, 1)
+    s = s.replace(anchor + '\n', anchor + '\n  memblock = android_restore_heap_pointer_tag(memblock);\n', 1)
+    s = s.replace('void* os::realloc(void *memblock, size_t size, MEMFLAGS flags) {',
+                  'void* os::realloc(void *memblock, size_t size, MEMFLAGS flags) {\n  memblock = android_restore_heap_pointer_tag(memblock);', 1)
+    s = s.replace('::free(membase);', '::free(android_restore_heap_pointer_tag(membase));')
+    open(p, 'w').write(s)
+PY
+grep -q 'android_restore_heap_pointer_tag(memblock)' hotspot/src/share/vm/runtime/os.cpp || { echo 'jdk8 os::free tag fix did not apply'; exit 1; }
 # Hotspot defaults to clang PCH, which passes gcc-only -fpch-deps to clang.
 sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
 # USE_CLANG is empty with our gcc-disguised clang, so drop the GCC-only dep flag.
