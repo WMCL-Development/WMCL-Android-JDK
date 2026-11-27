@@ -158,7 +158,12 @@ export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
 export STRIP="$TOOLCHAIN/bin/llvm-strip"
 
 echo "==> Configuring OpenJDK $JDK_VERSION for $TARGET"
-if ! bash ./configure \
+build_platform_arg=()
+if [ "$TARGET_ARCH" = "x86_64" ]; then
+  # Force cross-compilation mode so OpenJDK builds adlc with the host toolchain.
+  build_platform_arg=(--build=aarch64-unknown-linux-gnu)
+fi
+if ! bash ./configure "${build_platform_arg[@]}" \
   --openjdk-target="$TARGET" \
   --with-build-jdk="$JAVA_HOME" \
   --with-toolchain-type=clang \
