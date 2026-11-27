@@ -1,4 +1,4 @@
-name: Build JDK 11 aarch64
+name: Build JDK 11
 
 on:
   push:
@@ -7,8 +7,18 @@ on:
 
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            target_arch: arm64
+          - arch: x86_64
+            target_arch: x86_64
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 180
+    env:
+      TARGET_ARCH: ${{ matrix.target_arch }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,12 +38,12 @@ jobs:
             libfontconfig1-dev libx11-dev libxext-dev libxrandr-dev \
             libxrender-dev libxt-dev
 
-      - name: Build JDK 11 aarch64
+      - name: Build JDK 11
         run: bash scripts/build-android-jre.sh
 
       - name: Upload JDK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jdk11-android-arm64
-          path: out/jdk11-android-arm64.tar.xz
+          name: jdk11-android-${{ matrix.arch }}
+          path: out/jdk11-android-${{ matrix.arch }}.tar.xz
           if-no-files-found: error
