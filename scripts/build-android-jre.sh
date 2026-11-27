@@ -190,6 +190,14 @@ fi
 echo "==> Building OpenJDK images"
 BUILD_DIR="$(find build -maxdepth 1 -type d -name "linux-$TARGET_JDK-*" | head -n 1)"
 test -d "$BUILD_DIR"
+if [ "$TARGET_ARCH" = "x86_64" ]; then
+  # OpenJDK sees build CPU == target CPU and treats this as a native build,
+  # so adlc gets compiled with the Android target CC. Force host tools.
+  sed -i 's|^BUILD_CC :=.*|BUILD_CC := /usr/bin/gcc|' "$BUILD_DIR/spec.gmk"
+  sed -i 's|^BUILD_CXX :=.*|BUILD_CXX := /usr/bin/g++|' "$BUILD_DIR/spec.gmk"
+  sed -i 's|^BUILD_LD :=.*|BUILD_LD := /usr/bin/gcc|' "$BUILD_DIR/spec.gmk"
+  sed -i 's|^BUILD_LDCXX :=.*|BUILD_LDCXX := /usr/bin/g++|' "$BUILD_DIR/spec.gmk"
+fi
 make -C "$BUILD_DIR" JOBS="$(nproc)" images
 
 echo "==> Picking the full JDK image"
