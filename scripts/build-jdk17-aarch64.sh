@@ -14,9 +14,12 @@ PATCH_REPO="AngelAuraMC/angelauramc-openjdk-build"
 PATCH_COMMIT="196da32d80fe96d6967ca1c154f102cff0dfc389"
 PATCH_DIR="patches/jre_17/android"
 
-TARGET="aarch64-linux-android"
-TARGET_JDK="aarch64"
-TARGET_SHORT="arm64"
+TARGET_ARCH="${TARGET_ARCH:-arm64}"
+case "$TARGET_ARCH" in
+  arm64)  TARGET="aarch64-linux-android"; TARGET_JDK="aarch64"; TARGET_SHORT="arm64" ;;
+  x86_64) TARGET="x86_64-linux-android"; TARGET_JDK="x86_64"; TARGET_SHORT="x86_64" ;;
+  *) echo "unsupported TARGET_ARCH: $TARGET_ARCH" >&2; exit 2 ;;
+esac
 NDK_VERSION="r27b"
 API="21"
 FREETYPE_VERSION="2.10.0"
