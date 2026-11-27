@@ -252,7 +252,7 @@ sed -i 's|^include $(MAKEFILES_DIR)/saproc.make$|# saproc is not buildable again
 sed -i 's|^build: $(LIBJVM) $(LAUNCHER) $(LIBJSIG) $(LIBJVM_DB) $(BUILDLIBSAPROC) dtraceCheck$|build: $(LIBJVM) $(LAUNCHER) $(LIBJSIG) $(LIBJVM_DB) dtraceCheck|' hotspot/make/linux/makefiles/vm.make
 sed -i 's|^install:.*install_saproc.*$|install: install_jvm install_jsig|' hotspot/make/linux/makefiles/vm.make
 sed -i 's|^include $(MAKEFILES_DIR)/saproc.make$|# saproc disabled for Android|' hotspot/make/linux/makefiles/vm.make
-for sa_arch in aarch64 amd64 x86_64; do
+for sa_arch in aarch64 amd64 x86_64 x86 sparc ppc ia64 arm zero; do
   sed -i "/^ADD_SA_BINARIES\/$sa_arch = /,+1d" hotspot/make/linux/makefiles/defs.make
   sed -i "/^[[:space:]]*ADD_SA_BINARIES\/$sa_arch += /d" hotspot/make/linux/makefiles/defs.make
   echo "ADD_SA_BINARIES/$sa_arch =" >> hotspot/make/linux/makefiles/defs.make
