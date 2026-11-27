@@ -251,7 +251,7 @@ sed -i '/DEPFLAGS += -fpch-deps/d' hotspot/make/linux/makefiles/gcc.make
 sed -i 's|^include $(MAKEFILES_DIR)/saproc.make$|# saproc is not buildable against bionic; skip it for Android JRE|' hotspot/make/linux/makefiles/vm.make
 sed -i 's|^build: $(LIBJVM) $(LAUNCHER) $(LIBJSIG) $(LIBJVM_DB) $(BUILDLIBSAPROC) dtraceCheck$|build: $(LIBJVM) $(LAUNCHER) $(LIBJSIG) $(LIBJVM_DB) dtraceCheck|' hotspot/make/linux/makefiles/vm.make
 sed -i 's|^install: install_jvm install_jsig install_saproc$|install: install_jvm install_jsig|' hotspot/make/linux/makefiles/vm.make
-for sa_arch in aarch64 amd64; do
+for sa_arch in aarch64 amd64 x86_64; do
   sed -i "/^ADD_SA_BINARIES\/$sa_arch = /,+1d" hotspot/make/linux/makefiles/defs.make
   sed -i "/^[[:space:]]*ADD_SA_BINARIES\/$sa_arch += /d" hotspot/make/linux/makefiles/defs.make
   echo "ADD_SA_BINARIES/$sa_arch =" >> hotspot/make/linux/makefiles/defs.make
