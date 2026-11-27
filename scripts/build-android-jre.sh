@@ -14,9 +14,12 @@ PATCH_REPO="AngelAuraMC/angelauramc-openjdk-build"
 PATCH_COMMIT="196da32d80fe96d6967ca1c154f102cff0dfc389"
 PATCH_DIR="patches/jre_17/android"
 
-TARGET="aarch64-linux-android"
-TARGET_JDK="aarch64"
-TARGET_SHORT="arm64"
+TARGET_ARCH="${TARGET_ARCH:-arm64}"
+case "$TARGET_ARCH" in
+  arm64)  TARGET="aarch64-linux-android"; TARGET_JDK="aarch64"; TARGET_SHORT="arm64" ;;
+  x86_64) TARGET="x86_64-linux-android"; TARGET_JDK="x86_64"; TARGET_SHORT="x86_64" ;;
+  *) echo "unsupported TARGET_ARCH: $TARGET_ARCH" >&2; exit 2 ;;
+esac
 NDK_VERSION="r27b"
 API="21"
 FREETYPE_VERSION="2.10.0"
@@ -109,6 +112,7 @@ for NAME in jdk8u_android.diff jdk8u_android_main.diff; do
   echo "note: re-applied drifted autoconf hunks from $NAME"
 done
 
+if [ "$TARGET_ARCH" = "arm64" ]; then
 # clang -O3 exploits a shift-by-64 undefined behaviour in the runtime-built
 # logical-immediate lookup tables: every andr with an immediate then fails and
 # the VM aborts in StubRoutines::initialize1. Guard the shift in replicate().
@@ -238,6 +242,7 @@ if 'android_restore_heap_pointer_tag' not in s:
     open(p, 'w').write(s)
 PY
 grep -q 'android_restore_heap_pointer_tag(memblock)' hotspot/src/share/vm/runtime/os.cpp || { echo 'jdk8 os::free tag fix did not apply'; exit 1; }
+fi
 # Hotspot defaults to clang PCH, which passes gcc-only -fpch-deps to clang.
 sed -i 's/^      USE_PRECOMPILED_HEADER=1$/      USE_PRECOMPILED_HEADER=0/' hotspot/make/linux/makefiles/gcc.make
 # USE_CLANG is empty with our gcc-disguised clang, so drop the GCC-only dep flag.
