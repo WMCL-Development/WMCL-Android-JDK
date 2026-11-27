@@ -197,6 +197,10 @@ if [ "$TARGET_ARCH" = "x86_64" ]; then
   sed -i 's|^BUILD_CXX :=.*|BUILD_CXX := /usr/bin/g++|' "$BUILD_DIR/spec.gmk"
   sed -i 's|^BUILD_LD :=.*|BUILD_LD := /usr/bin/gcc|' "$BUILD_DIR/spec.gmk"
   sed -i 's|^BUILD_LDCXX :=.*|BUILD_LDCXX := /usr/bin/g++|' "$BUILD_DIR/spec.gmk"
+  sed -i 's|^BUILD_CFLAGS :=.*|BUILD_CFLAGS := -O2|' "$BUILD_DIR/spec.gmk"
+  sed -i 's|^BUILD_CXXFLAGS :=.*|BUILD_CXXFLAGS := -O2|' "$BUILD_DIR/spec.gmk"
+  sed -i 's|^BUILD_CPPFLAGS :=.*|BUILD_CPPFLAGS :=|' "$BUILD_DIR/spec.gmk"
+  sed -i 's|^BUILD_LDFLAGS :=.*|BUILD_LDFLAGS :=|' "$BUILD_DIR/spec.gmk"
 fi
 make -C "$BUILD_DIR" JOBS="$(nproc)" images
 
